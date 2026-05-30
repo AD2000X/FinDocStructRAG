@@ -16,4 +16,5 @@ venv/
 # Local tooling / scratch (not part of the project)
 .claude/
 .vscode/
+.mcp.json
 tmp/
