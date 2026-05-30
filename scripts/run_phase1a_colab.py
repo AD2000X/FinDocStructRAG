@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -175,9 +176,12 @@ def main() -> None:
             continue
 
         pred_table = normalize_tatr_prediction(pred)
-        # Geometry issues are logged as quality flags but do not fail the sample.
+        # Validate the same sorted boxes the grid is built from; raw TATR order would
+        # trip the sort check. Geometry issues are quality flags, not sample failures.
+        rows_sorted = sorted(pred["row_boxes"], key=lambda r: r["bbox"][1])
+        cols_sorted = sorted(pred["col_boxes"], key=lambda c: c["bbox"][0])
         validate_grid_geometry(
-            pred["row_boxes"], pred["col_boxes"], pred_table["cells"],
+            rows_sorted, cols_sorted, pred_table["cells"],
             logger=failures, sample_id=sample_id,
         )
         pred_table["meta"] = {
@@ -199,8 +203,29 @@ def main() -> None:
     report_path = write_topology_report(
         config.EVALUATION / f"{PHASE}_topology_{args.run_id}.json", summary
     )
+
+    # Append a one-line run summary (the run journal). The presence of a line means the
+    # run completed; per-sample failures are detailed in the failure log.
+    run_summary = {
+        "run_id": args.run_id,
+        "phase": PHASE,
+        "status": "completed",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "limit": args.limit,
+        "threshold": args.threshold,
+        "processed": processed,
+        "skipped": skipped,
+        "failed": failed,
+        "metrics": summary,
+    }
+    runlog_path = config.MANIFESTS / f"{PHASE}_runs.jsonl"
+    runlog_path.parent.mkdir(parents=True, exist_ok=True)
+    with runlog_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(run_summary) + "\n")
+
     print(f"processed={processed} skipped={skipped} failed={failed}")
     print(f"topology report -> {report_path}")
+    print(f"run log     -> {runlog_path}")
     print(json.dumps(summary, indent=2))
 
 
