@@ -1,0 +1,23 @@
+name: CI
+
+# Runs the CPU test suite on pull requests (the merge gate for GitHub Flow) and on
+# pushes to main (post-merge sanity). GPU-only paths (TATR/OCR) are not exercised here;
+# they run on Colab. See DESIGN_SPEC P3: pure-CPU logic must be green before Colab.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
