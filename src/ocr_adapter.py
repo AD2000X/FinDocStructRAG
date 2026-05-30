@@ -62,6 +62,7 @@ def build_paddleocr():
     import os
 
     os.environ.setdefault("FLAGS_use_mkldnn", "0")
+    os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
     from paddleocr import PaddleOCR
 
     return PaddleOCR(lang="en")
