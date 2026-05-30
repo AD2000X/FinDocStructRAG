@@ -4,4 +4,7 @@ transformers
 paddleocr
 faiss-cpu
 datasets
+huggingface_hub
 sentence-transformers
+Pillow
+matplotlib
