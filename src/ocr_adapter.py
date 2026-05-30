@@ -43,6 +43,17 @@ def _quad_to_bbox(quad: list[list[float]]) -> list[float]:
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
+def build_paddleocr():
+    """Build a reusable PaddleOCR instance (English, no angle classifier).
+
+    Construct once per batch and pass into run_paddleocr; building per sample reloads
+    the model weights every time. Imported lazily so this module stays CPU/local-safe.
+    """
+    from paddleocr import PaddleOCR
+
+    return PaddleOCR(use_angle_cls=False, lang="en", show_log=False)
+
+
 def run_paddleocr(image, ocr=None) -> list[OCRWord]:
     """Run PaddleOCR on a crop and return normalised OCRWord records.
 
@@ -53,8 +64,7 @@ def run_paddleocr(image, ocr=None) -> list[OCRWord]:
     import numpy as np
 
     if ocr is None:
-        from paddleocr import PaddleOCR
-        ocr = PaddleOCR(use_angle_cls=False, lang="en", show_log=False)
+        ocr = build_paddleocr()
 
     result = ocr.ocr(np.asarray(image), cls=False)
     words: list[OCRWord] = []
