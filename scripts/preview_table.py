@@ -63,9 +63,19 @@ def main() -> None:
     (out_dir / f"{sample_id}_gt_filled.html").write_text(
         vis.topology_to_html(table), encoding="utf-8")
 
+    # Which GT words did not land in any cell? assign_words_to_cells appends the same
+    # word dicts into cell["words"], so identity tells us what was left out. This
+    # classifies the coverage gap: out-of-table noise (footnotes, page numbers) vs real
+    # cell content that the grid failed to capture.
+    assigned_ids = {id(w) for c in table["cells"] for w in c.get("words", [])}
+    unassigned = [w for w in words if id(w) not in assigned_ids]
+
     print(f"sample_id: {sample_id}")
     print(f"grid: {table['num_rows']} rows x {table['num_cols']} cols, "
           f"{len(table['cells'])} cells, {len(words)} GT words")
+    print(f"unassigned words: {len(unassigned)}")
+    for w in unassigned[:30]:
+        print(f"  {w['bbox']} {w['text']!r}")
     print(f"wrote preview to: {out_dir}")
 
 
