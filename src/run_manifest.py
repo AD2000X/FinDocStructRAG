@@ -96,3 +96,20 @@ class RunManifest:
                 writer.writeheader()
             writer.writerow(asdict(record))
             f.flush()
+
+
+def read_completed(manifest_path: str | Path) -> list[dict]:
+    """Return the latest row per sample_id whose final status is success.
+
+    Resume appends rows, so a sample may appear failed then success across sessions;
+    the last row for an id wins. Used to recompute metrics over every completed sample,
+    independent of how many runs produced them. Returns [] if the file is missing.
+    """
+    path = Path(manifest_path)
+    if not path.exists():
+        return []
+    latest: dict[str, dict] = {}
+    with path.open("r", encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            latest[row["sample_id"]] = row
+    return [row for row in latest.values() if row.get("status") == STATUS_SUCCESS]

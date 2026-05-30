@@ -13,6 +13,7 @@ from src.run_manifest import (
     STATUS_SKIPPED,
     STATUS_SUCCESS,
     RunManifest,
+    read_completed,
 )
 
 
@@ -60,3 +61,21 @@ def test_unknown_status_raises(tmp_path):
     m = RunManifest(tmp_path / "m.csv")
     with pytest.raises(ValueError):
         m.record("s1", "bogus")
+
+
+def test_read_completed_latest_status_wins(tmp_path):
+    path = tmp_path / "m.csv"
+    m = RunManifest(path)
+    m.record("s1", STATUS_FAILED, error_type="tatr_inference")  # earlier failure
+    m.record("s1", STATUS_SUCCESS, output_path="out1")          # later success wins
+    m.record("s2", STATUS_SUCCESS, output_path="out2")
+    m.record("s3", STATUS_FAILED, error_type="grid_geometry")
+
+    rows = read_completed(path)
+    assert {r["sample_id"] for r in rows} == {"s1", "s2"}
+    s1 = next(r for r in rows if r["sample_id"] == "s1")
+    assert s1["output_path"] == "out1"
+
+
+def test_read_completed_missing_file(tmp_path):
+    assert read_completed(tmp_path / "nope.csv") == []
