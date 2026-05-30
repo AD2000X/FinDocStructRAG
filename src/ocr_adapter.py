@@ -1,0 +1,70 @@
+"""OCR adapter (DESIGN_SPEC §5.5, Phase 1B).
+
+Normalises an OCR engine's output into a flat list of OCRWord records that
+assign_words_to_cells() can consume. PaddleOCR is the only engine wired in for now
+(PLAN: PaddleOCR priority over Tesseract); a Tesseract fallback can slot in behind the
+same OCRWord contract later.
+
+PaddleOCR is a GPU/Colab-only dependency, so it is imported lazily inside run_paddleocr.
+Importing this module (and the OCRWord dataclass) stays pure-CPU and local-test-safe.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class OCRWord:
+    """One recognised word, in the crop's pixel coordinates.
+
+    bbox is axis-aligned [x1, y1, x2, y2]; engines that return a quadrilateral are
+    reduced to its enclosing box. source names the engine so mixed runs stay traceable.
+    """
+
+    text: str
+    bbox: list[float]
+    confidence: float
+    source: str
+
+    def to_dict(self) -> dict:
+        return {
+            "text": self.text,
+            "bbox": self.bbox,
+            "confidence": self.confidence,
+            "source": self.source,
+        }
+
+
+def _quad_to_bbox(quad: list[list[float]]) -> list[float]:
+    """Enclosing axis-aligned box of a 4-point polygon (PaddleOCR's box format)."""
+    xs = [p[0] for p in quad]
+    ys = [p[1] for p in quad]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def run_paddleocr(image, ocr=None) -> list[OCRWord]:
+    """Run PaddleOCR on a crop and return normalised OCRWord records.
+
+    image: a PIL.Image or numpy array of the table crop.
+    ocr: a pre-built PaddleOCR instance (reused across samples on Colab); built here if
+    None. PaddleOCR is imported lazily so this module imports without the GPU stack.
+    """
+    import numpy as np
+
+    if ocr is None:
+        from paddleocr import PaddleOCR
+        ocr = PaddleOCR(use_angle_cls=False, lang="en", show_log=False)
+
+    result = ocr.ocr(np.asarray(image), cls=False)
+    words: list[OCRWord] = []
+    # PaddleOCR returns [ [ [quad, (text, conf)], ... ] ] (one inner list per image).
+    for page in result or []:
+        for quad, (text, conf) in page or []:
+            words.append(OCRWord(
+                text=text,
+                bbox=_quad_to_bbox(quad),
+                confidence=float(conf),
+                source="paddleocr",
+            ))
+    return words

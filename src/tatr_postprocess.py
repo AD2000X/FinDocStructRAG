@@ -291,3 +291,72 @@ def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))
     return {"num_rows": len(rows), "num_cols": len(cols), "cells": cells}
+
+
+def _bbox_center(bbox: list[float]) -> tuple[float, float]:
+    return (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+
+
+def _point_in_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
+    x, y = point
+    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+
+
+def _iou(a: list[float], b: list[float]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0.0 else 0.0
+
+
+def assign_words_to_cells(
+    cells: list[dict],
+    words: list[dict],
+    logger: Optional[FailureLogger] = None,
+    sample_id: str = "unknown",
+) -> list[dict]:
+    """Assign OCR words to derived cells (DESIGN_SPEC §5.5, Phase 1B).
+
+    Each word (a dict with "bbox" [x1,y1,x2,y2] and "text") is placed in the cell that
+    contains its center; if no cell contains the center, it falls back to the cell with
+    the highest IoU (must be > 0). A word that overlaps no cell is left unassigned and
+    logged (error_type "word_assignment"). Each cell's words are then sorted top-to-
+    bottom, left-to-right and joined into cell["text"]. Mutates and returns cells.
+    """
+    for cell in cells:
+        cell.setdefault("words", [])
+
+    for word in words:
+        wb = word["bbox"]
+        target = None
+        center = _bbox_center(wb)
+        for cell in cells:
+            if "bbox" in cell and _point_in_bbox(center, cell["bbox"]):
+                target = cell
+                break
+        if target is None:
+            best_iou = 0.0
+            for cell in cells:
+                if "bbox" not in cell:
+                    continue
+                iou = _iou(wb, cell["bbox"])
+                if iou > best_iou:
+                    best_iou, target = iou, cell
+        if target is None:
+            if logger is not None:
+                logger.log(sample_id, "ocr_assign", "word_assignment",
+                           word.get("text", ""))
+            continue
+        target["words"].append(word)
+
+    for cell in cells:
+        cell["words"].sort(key=lambda w: (w["bbox"][1], w["bbox"][0]))
+        cell["text"] = " ".join(
+            w.get("text", "") for w in cell["words"]
+        ).strip()
+    return cells
