@@ -2,6 +2,9 @@
 torch
 transformers
 timm
+# paddleocr 3.x is only the pipeline frontend; it needs the paddlepaddle engine to run.
+# CPU build: table crops are small, and it avoids paddlepaddle-gpu CUDA-version mismatches.
+paddlepaddle
 paddleocr
 faiss-cpu
 datasets
