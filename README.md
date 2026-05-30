@@ -47,7 +47,9 @@ pytest
 
 ## Status
 
-Phase 0 (repo foundation) is in place: package skeleton, `config.py` with Colab/local
-path detection, the canonical table schema, failure logging, the Phase 1A
-post-processing interface, and smoke tests. Phase 1A (table topology) is next. See
-[PLAN.md](PLAN.md) for the phase roadmap.
+Phase 0 (repo foundation) and Phase 1A-local (CPU table-topology logic) are done:
+package skeleton, `config.py` with Colab/local path detection, the canonical table
+schema, failure logging, financial number normalization, the TATR post-processing logic
+(grid derivation, spanning-cell mapping, grid validation, occupancy-aware HTML parsing,
+annotation gate), and the synthetic unit tests. Phase 1A-colab (real TATR inference +
+topology metrics) is next. See [PLAN.md](PLAN.md) for the phase roadmap.
