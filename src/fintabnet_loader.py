@@ -145,6 +145,11 @@ def words_path_for(sample_id: str) -> Path:
     return structure_root() / STRUCTURE_SUBDIR / "words" / f"{sample_id}{WORDS_SUFFIX}"
 
 
+def image_path_for(sample_id: str) -> Path:
+    """Path to a sample's table crop (FinTabNet.c-Structure/images/<stem>.jpg)."""
+    return structure_root() / STRUCTURE_SUBDIR / "images" / f"{sample_id}.jpg"
+
+
 def parse_words_json(source: str | Path | list) -> list[dict]:
     """FinTabNet.c per-sample words JSON -> word dicts for assign_words_to_cells().
 
