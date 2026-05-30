@@ -54,10 +54,12 @@ def build_paddleocr():
     Only `lang` is passed: PaddleOCR 3.x dropped `show_log` / `use_angle_cls`, so keeping
     the constructor minimal avoids version-specific "Unknown argument" errors.
 
-    oneDNN is disabled via FLAGS_use_mkldnn before paddle initialises: the paddlepaddle
-    3.x CPU build crashes in the oneDNN path of the PIR executor with
-    "ConvertPirAttribute2RuntimeAttribute not support". The flag must be set before
-    paddle is imported, so it lives here, right before the import.
+    oneDNN must be disabled or the paddlepaddle 3.x CPU build crashes in the oneDNN path
+    of the inference predictor ("ConvertPirAttribute2RuntimeAttribute not support"). The
+    effective switch is the predictor's enable_mkldnn=False (the global FLAGS_* do not
+    reach the paddlex inference predictor); the FLAGS are still set as a harmless belt-
+    and-braces before paddle imports. enable_mkldnn is passed in a try/except because old
+    PaddleOCR builds reject unknown constructor args.
     """
     import os
 
@@ -65,7 +67,10 @@ def build_paddleocr():
     os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
     from paddleocr import PaddleOCR
 
-    return PaddleOCR(lang="en")
+    try:
+        return PaddleOCR(lang="en", enable_mkldnn=False)
+    except (TypeError, ValueError):
+        return PaddleOCR(lang="en")
 
 
 def _parse_v3(result) -> list[OCRWord]:
