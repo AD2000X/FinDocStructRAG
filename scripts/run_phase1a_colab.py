@@ -71,6 +71,11 @@ def _load_model(device):
     processor = AutoImageProcessor.from_pretrained(
         config.TATR_STRUCTURE_MODEL, use_fast=False
     )
+    # This checkpoint ships size={'longest_edge': N} only, which the resize step
+    # rejects (it needs shortest_edge+longest_edge, or height+width). Add a
+    # shortest_edge while preserving the checkpoint's longest_edge.
+    longest = processor.size.get("longest_edge", 1000)
+    processor.size = {"shortest_edge": min(800, longest), "longest_edge": longest}
     model = TableTransformerForObjectDetection.from_pretrained(
         config.TATR_STRUCTURE_MODEL
     )
