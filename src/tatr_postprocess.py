@@ -314,39 +314,108 @@ def _iou(a: list[float], b: list[float]) -> float:
     return inter / union if union > 0.0 else 0.0
 
 
+def _grid_bands(cells: list[dict]) -> tuple[dict, dict]:
+    """Per-row y-extent and per-col x-extent, read from single-span cells.
+
+    {row_index: (y1, y2)} and {col_index: (x1, x2)}. Spanning cells are skipped on the
+    axis they span so each band reflects one row / one column.
+    """
+    rows: dict[int, tuple[float, float]] = {}
+    cols: dict[int, tuple[float, float]] = {}
+    for c in cells:
+        x1, y1, x2, y2 = c["bbox"]
+        if c["row_end"] - c["row_start"] == 1:
+            rows[c["row_start"]] = (y1, y2)
+        if c["col_end"] - c["col_start"] == 1:
+            cols[c["col_start"]] = (x1, x2)
+    return rows, cols
+
+
+def _grid_bbox(cells: list[dict], margin: float) -> list[float]:
+    """Bounding box of all cells, expanded by margin (a fraction of width/height)."""
+    x1 = min(c["bbox"][0] for c in cells)
+    y1 = min(c["bbox"][1] for c in cells)
+    x2 = max(c["bbox"][2] for c in cells)
+    y2 = max(c["bbox"][3] for c in cells)
+    mx, my = (x2 - x1) * margin, (y2 - y1) * margin
+    return [x1 - mx, y1 - my, x2 + mx, y2 + my]
+
+
+def _best_band(lo: float, hi: float, bands: dict) -> Optional[int]:
+    """Index of the band with the most 1-D overlap with [lo, hi]; if none overlaps,
+    the band whose center is nearest. None when there are no bands."""
+    if not bands:
+        return None
+    best_idx, best_overlap = None, 0.0
+    for idx, (b1, b2) in bands.items():
+        overlap = max(0.0, min(hi, b2) - max(lo, b1))
+        if overlap > best_overlap:
+            best_overlap, best_idx = overlap, idx
+    if best_idx is not None:
+        return best_idx
+    center = (lo + hi) / 2.0
+    return min(bands, key=lambda i: abs(center - (bands[i][0] + bands[i][1]) / 2.0))
+
+
+def _cell_at(cells: list[dict], row: int, col: int) -> Optional[dict]:
+    """The cell covering grid position (row, col), including a spanning cell."""
+    for cell in cells:
+        if (cell["row_start"] <= row < cell["row_end"]
+                and cell["col_start"] <= col < cell["col_end"]):
+            return cell
+    return None
+
+
 def assign_words_to_cells(
     cells: list[dict],
     words: list[dict],
     logger: Optional[FailureLogger] = None,
     sample_id: str = "unknown",
+    grid_margin: float = 0.05,
 ) -> list[dict]:
-    """Assign OCR words to derived cells (DESIGN_SPEC §5.5, Phase 1B).
+    """Assign OCR/GT words to derived cells (DESIGN_SPEC §5.5, Phase 1B).
 
-    Each word (a dict with "bbox" [x1,y1,x2,y2] and "text") is placed in the cell that
-    contains its center; if no cell contains the center, it falls back to the cell with
-    the highest IoU (must be > 0). A word that overlaps no cell is left unassigned and
-    logged (error_type "word_assignment"). Each cell's words are then sorted top-to-
-    bottom, left-to-right and joined into cell["text"]. Mutates and returns cells.
+    For each word (a dict with "bbox" [x1,y1,x2,y2] and "text"):
+      1. if its center is inside a cell, assign there;
+      2. else if it overlaps a cell, assign to the max-IoU cell;
+      3. else, only if its center is inside the table grid bbox expanded by grid_margin,
+         snap it to the cell at (nearest/most-overlapping row x nearest/most-overlapping
+         column) - this catches words just outside the grid edges (e.g. a header line
+         above row 0) without pulling in far-off footnotes / page numbers.
+    A word that clears none of these is left unassigned and logged ("word_assignment").
+    Each cell's words are then sorted by (y_center, x_center) and joined into
+    cell["text"]. Mutates and returns cells.
     """
     for cell in cells:
         cell.setdefault("words", [])
 
+    grid_cells = [c for c in cells if "bbox" in c]
+    row_bands, col_bands = _grid_bands(grid_cells)
+    expanded = _grid_bbox(grid_cells, grid_margin) if grid_cells else None
+
     for word in words:
         wb = word["bbox"]
-        target = None
         center = _bbox_center(wb)
-        for cell in cells:
-            if "bbox" in cell and _point_in_bbox(center, cell["bbox"]):
+        target = None
+
+        for cell in grid_cells:
+            if _point_in_bbox(center, cell["bbox"]):
                 target = cell
                 break
+
         if target is None:
             best_iou = 0.0
-            for cell in cells:
-                if "bbox" not in cell:
-                    continue
+            for cell in grid_cells:
                 iou = _iou(wb, cell["bbox"])
                 if iou > best_iou:
                     best_iou, target = iou, cell
+
+        if target is None and expanded is not None and _point_in_bbox(center, expanded):
+            row = _best_band(wb[1], wb[3], row_bands)
+            col = _best_band(wb[0], wb[2], col_bands)
+            if row is not None and col is not None:
+                target = _cell_at(grid_cells, row, col)
+
         if target is None:
             if logger is not None:
                 logger.log(sample_id, "ocr_assign", "word_assignment",
@@ -355,7 +424,7 @@ def assign_words_to_cells(
         target["words"].append(word)
 
     for cell in cells:
-        cell["words"].sort(key=lambda w: (w["bbox"][1], w["bbox"][0]))
+        cell["words"].sort(key=lambda w: _bbox_center(w["bbox"])[::-1])
         cell["text"] = " ".join(
             w.get("text", "") for w in cell["words"]
         ).strip()

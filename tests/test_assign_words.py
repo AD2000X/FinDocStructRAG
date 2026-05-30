@@ -73,6 +73,58 @@ def test_unassigned_word_is_logged_not_placed():
     assert message == "stray"
 
 
+def _grid_2x2():
+    # rows 20..120 / 120..220, cols 0..50 / 50..100 (a tall grid so the 5% y-margin
+    # leaves room above row 0 for a header word).
+    return [
+        {"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+         "bbox": [0, 20, 50, 120], "text": "", "is_header": False, "words": []},
+        {"row_start": 0, "row_end": 1, "col_start": 1, "col_end": 2,
+         "bbox": [50, 20, 100, 120], "text": "", "is_header": False, "words": []},
+        {"row_start": 1, "row_end": 2, "col_start": 0, "col_end": 1,
+         "bbox": [0, 120, 50, 220], "text": "", "is_header": False, "words": []},
+        {"row_start": 1, "row_end": 2, "col_start": 1, "col_end": 2,
+         "bbox": [50, 120, 100, 220], "text": "", "is_header": False, "words": []},
+    ]
+
+
+def test_assign_word_above_first_row_goes_to_nearest_row_col():
+    cells = _grid_2x2()
+    # center (75, 15): above row 0 (starts y=20) but inside the expanded grid bbox;
+    # x falls in column 1. Should snap to cell (row 0, col 1).
+    assign_words_to_cells(cells, [_word("H", [55, 12, 95, 18])])
+    placed = {(c["row_start"], c["col_start"]): c["text"] for c in cells}
+    assert placed[(0, 1)] == "H"
+    assert all(t == "" for k, t in placed.items() if k != (0, 1))
+
+
+def test_far_outside_word_remains_unassigned():
+    cells = _grid_2x2()
+    log = _RecordingLogger()
+    # center y = -95, far above the expanded grid bbox -> not snapped.
+    assign_words_to_cells(
+        cells, [_word("footer", [55, -100, 95, -90])], logger=log, sample_id="s")
+    assert all(c["text"] == "" for c in cells)
+    assert len(log.calls) == 1
+    assert log.calls[0][2] == "word_assignment"
+
+
+def test_center_in_cell_still_wins():
+    cells = _grid_2x2()
+    # center (25, 70) sits squarely inside cell (0,0); must not be moved by fallback.
+    assign_words_to_cells(cells, [_word("x", [10, 60, 40, 80])])
+    placed = {(c["row_start"], c["col_start"]): c["text"] for c in cells}
+    assert placed[(0, 0)] == "x"
+
+
+def test_iou_fallback_still_works():
+    cells = [{"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+              "bbox": [0, 0, 100, 100], "text": "", "is_header": False, "words": []}]
+    # center (125,125) outside, but the box overlaps the cell corner -> IoU assigns.
+    assign_words_to_cells(cells, [_word("edge", [90, 90, 160, 160])])
+    assert cells[0]["text"] == "edge"
+
+
 def test_ocrword_to_dict():
     w = OCRWord(text="x", bbox=[1, 2, 3, 4], confidence=0.5, source="paddleocr")
     assert w.to_dict() == {
