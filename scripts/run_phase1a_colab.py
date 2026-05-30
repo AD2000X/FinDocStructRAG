@@ -200,9 +200,15 @@ def main() -> None:
         processed += 1
 
     summary = aggregate_topology(per_sample)
-    report_path = write_topology_report(
-        config.EVALUATION / f"{PHASE}_topology_{args.run_id}.json", summary
-    )
+    report_path = config.EVALUATION / f"{PHASE}_topology_{args.run_id}.json"
+    # Only (re)write the report when this run actually processed samples; otherwise a
+    # fully-skipped resume would clobber a good report with zeros. Authoritative metrics
+    # over all persisted predictions are recomputed by scripts/evaluate_tables.py.
+    if per_sample:
+        write_topology_report(report_path, summary)
+        report_note = str(report_path)
+    else:
+        report_note = f"{report_path} (unchanged - no new samples this run)"
 
     # Append a one-line run summary (the run journal). The presence of a line means the
     # run completed; per-sample failures are detailed in the failure log.
@@ -224,7 +230,7 @@ def main() -> None:
         f.write(json.dumps(run_summary) + "\n")
 
     print(f"processed={processed} skipped={skipped} failed={failed}")
-    print(f"topology report -> {report_path}")
+    print(f"topology report -> {report_note}")
     print(f"run log     -> {runlog_path}")
     print(json.dumps(summary, indent=2))
 
