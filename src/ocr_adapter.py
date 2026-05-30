@@ -53,7 +53,15 @@ def build_paddleocr():
     the model weights every time. Imported lazily so this module stays CPU/local-safe.
     Only `lang` is passed: PaddleOCR 3.x dropped `show_log` / `use_angle_cls`, so keeping
     the constructor minimal avoids version-specific "Unknown argument" errors.
+
+    oneDNN is disabled via FLAGS_use_mkldnn before paddle initialises: the paddlepaddle
+    3.x CPU build crashes in the oneDNN path of the PIR executor with
+    "ConvertPirAttribute2RuntimeAttribute not support". The flag must be set before
+    paddle is imported, so it lives here, right before the import.
     """
+    import os
+
+    os.environ.setdefault("FLAGS_use_mkldnn", "0")
     from paddleocr import PaddleOCR
 
     return PaddleOCR(lang="en")
