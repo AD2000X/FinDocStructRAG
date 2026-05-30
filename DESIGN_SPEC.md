@@ -667,3 +667,61 @@ change V9's table/OCR/eval design; they fill gaps V9 left open:
 
 For the order, environment workflow (VS Code + Colab extension, git-as-truth, `.py`-core /
 `.ipynb`-runner), and acceptance criteria, see [PLAN.md](PLAN.md).
+
+---
+
+## 18. Outputs artifact policy and run manifests
+
+Colab sessions die. Batch runs over thousands of FinTabNet.c samples must be **resumable**,
+and progress must be **inspectable without screenshots** (text files the runner pastes back,
+or that are pulled into the repo). This section makes that a convention.
+
+### 18.1 Artifacts vs cache
+
+| Class | Examples | Lifetime |
+|-------|----------|----------|
+| **Artifact** (keep) | `outputs/manifests/`, `outputs/evaluation/`, `outputs/failure_logs/`, `outputs/tables/{gt_filled,tatr_predicted,ocr_filled}/`, `outputs/figures/` | Persist to Drive; never auto-delete |
+| **Cache/temp** (deletable) | `/content/fintabnet_c_cache/`, HF / PaddleOCR model cache, `tmp/`, pytest tmp, raw intermediate predictions once metrics are stable | May be cleared; let Colab VM lose them |
+
+Rules:
+- Artifacts go to Drive, not git (`.gitignore` excludes `outputs/`). The repo-visible feedback
+  is **text pasted back** (manifest / metrics / failures), per [[colab-runner-workflow]].
+  If a number must live in git, only the **aggregate** `evaluation/*.json` may be copied in,
+  never the per-sample manifest.
+- HF model cache stays on the Colab VM (do **not** mirror it to Drive).
+- Keep a small batch of debug predictions during early Phase 1A; only prune raw intermediates
+  after topology metrics are stable.
+
+### 18.2 Run manifest
+
+One row per sample, **keyed by `sample_id`**, **appended and flushed per sample** (not written
+once at the end, so a mid-run crash still leaves a resumable record).
+
+```
+outputs/manifests/phase1a_<run>.csv
+columns (fixed, do not extend without a spec bump):
+  sample_id, status, input_path, output_path, error_type, timestamp
+  status     in {success, failed, skipped}
+  error_type "" on success; taxonomy value (§10) on failure
+  timestamp  ISO-8601 UTC
+```
+
+Resume rule: on restart, load the manifest, skip every `sample_id` already `success`.
+`sample_id` for FinTabNet.c is the XML/JPG stem (e.g. `AAL_2003_page_25_table_0`).
+
+### 18.3 Metrics and failure logs
+
+- `outputs/evaluation/phase1a_topology.json` — aggregate topology metrics (§6.2). Reportable.
+- `outputs/failure_logs/phase1a.jsonl` — one JSON object per failed sample, via
+  `src/failure_logger.py` (§10): `sample_id`, `error_type`, message, optional context.
+
+### 18.4 Phase 1A minimal set
+
+Start with exactly three artifact streams; add `figures/`, `ocr_filled/`, etc. only when the
+owning phase needs them (no empty scaffolding):
+
+```
+outputs/manifests/phase1a_<run>.csv
+outputs/evaluation/phase1a_topology.json
+outputs/failure_logs/phase1a.jsonl
+```

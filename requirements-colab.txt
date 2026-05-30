@@ -1,6 +1,7 @@
 # Colab GPU dependencies (installed on the Colab VM, not locally on Windows).
 torch
 transformers
+timm
 paddleocr
 faiss-cpu
 datasets
