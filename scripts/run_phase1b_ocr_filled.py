@@ -1,11 +1,13 @@
-"""Phase 1B (Colab GPU): fill TATR-predicted grids with PaddleOCR text -> ocr_filled.
+"""Phase 1B (Colab CPU/GPU runtime): fill TATR-predicted grids with PaddleOCR text.
 
-Triggered from the notebook:
+OCR currently runs on CPU PaddlePaddle (requirements-colab pins `paddlepaddle`, not
+`paddlepaddle-gpu`), so this step does not need a GPU runtime - only Phase 1A TATR
+inference did. Triggered from the notebook:
     !python scripts/run_phase1b_ocr_filled.py --limit 10 --seed 42 --run-id debug
 
 For each sample (using the same seeded subset convention as Phase 1A) this:
   1. loads the Phase 1A TATR-predicted canonical grid (outputs/tables/tatr_predicted/),
-  2. runs PaddleOCR on the table crop (GPU),
+  2. runs PaddleOCR on the table crop,
   3. assigns OCR words to the predicted cells (the same assign_words_to_cells used for
      gt_filled),
   4. writes the filled table to outputs/tables/ocr_filled/ (text_source="ocr"), records
