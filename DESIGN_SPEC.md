@@ -408,6 +408,11 @@ def relaxed_numeric_match(
 9. Topology metrics summary
 ```
 
+Produced by `src/visualisation.py` (pure rendering) + `scripts/render_phase1a_figures.py`
+(Colab, CPU) from the persisted `tatr_raw/` + `tatr_predicted/` artifacts and the crop;
+prediction only, no GT overlay (P4). #6 (GT-filled HTML) needs `gt_filled/` and is
+produced in Phase 1B, not here.
+
 ---
 
 ## 6. Table evaluation

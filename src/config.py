@@ -56,6 +56,7 @@ RAG_INDEX = OUTPUT_ROOT / "rag_index"
 EVALUATION = OUTPUT_ROOT / "evaluation"
 FAILURE_LOGS = OUTPUT_ROOT / "failure_logs"
 MANIFESTS = OUTPUT_ROOT / "manifests"
+FIGURES = OUTPUT_ROOT / "figures"
 
 # Model IDs (DESIGN_SPEC §4.2, §7; PLAN §0).
 TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-fin"
