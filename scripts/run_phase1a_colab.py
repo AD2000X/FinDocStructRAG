@@ -66,7 +66,11 @@ LABEL_TO_KEY = {
 def _load_model(device):
     from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
-    processor = AutoImageProcessor.from_pretrained(config.TATR_STRUCTURE_MODEL)
+    # use_fast=False: the fast DETR processor raises "'SizeDict' object has no
+    # attribute 'keys'" during post-processing; the slow processor is stable for TATR.
+    processor = AutoImageProcessor.from_pretrained(
+        config.TATR_STRUCTURE_MODEL, use_fast=False
+    )
     model = TableTransformerForObjectDetection.from_pretrained(
         config.TATR_STRUCTURE_MODEL
     )
