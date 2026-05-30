@@ -331,13 +331,32 @@ def _grid_bands(cells: list[dict]) -> tuple[dict, dict]:
     return rows, cols
 
 
-def _grid_bbox(cells: list[dict], margin: float) -> list[float]:
-    """Bounding box of all cells, expanded by margin (a fraction of width/height)."""
+def _median(values: list[float]) -> float:
+    s = sorted(values)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
+def _expanded_grid_bbox(
+    cells: list[dict], row_bands: dict, col_bands: dict, pct: float
+) -> list[float]:
+    """Cell bounding box, expanded by a guard margin.
+
+    The margin is the larger of pct*extent and one median row-height / column-width, so
+    a header or footer line sitting roughly one row above/below the grid is caught
+    regardless of how tall the table is, while text two or more rows away is not.
+    """
     x1 = min(c["bbox"][0] for c in cells)
     y1 = min(c["bbox"][1] for c in cells)
     x2 = max(c["bbox"][2] for c in cells)
     y2 = max(c["bbox"][3] for c in cells)
-    mx, my = (x2 - x1) * margin, (y2 - y1) * margin
+    row_h = _median([b2 - b1 for b1, b2 in row_bands.values()])
+    col_w = _median([b2 - b1 for b1, b2 in col_bands.values()])
+    mx = max((x2 - x1) * pct, col_w)
+    my = max((y2 - y1) * pct, row_h)
     return [x1 - mx, y1 - my, x2 + mx, y2 + my]
 
 
@@ -391,7 +410,10 @@ def assign_words_to_cells(
 
     grid_cells = [c for c in cells if "bbox" in c]
     row_bands, col_bands = _grid_bands(grid_cells)
-    expanded = _grid_bbox(grid_cells, grid_margin) if grid_cells else None
+    expanded = (
+        _expanded_grid_bbox(grid_cells, row_bands, col_bands, grid_margin)
+        if grid_cells else None
+    )
 
     for word in words:
         wb = word["bbox"]

@@ -70,9 +70,16 @@ def main() -> None:
     assigned_ids = {id(w) for c in table["cells"] for w in c.get("words", [])}
     unassigned = [w for w in words if id(w) not in assigned_ids]
 
+    boxed = [c["bbox"] for c in table["cells"] if "bbox" in c]
+    grid_bbox = [
+        min(b[0] for b in boxed), min(b[1] for b in boxed),
+        max(b[2] for b in boxed), max(b[3] for b in boxed),
+    ] if boxed else None
+
     print(f"sample_id: {sample_id}")
     print(f"grid: {table['num_rows']} rows x {table['num_cols']} cols, "
           f"{len(table['cells'])} cells, {len(words)} GT words")
+    print(f"grid bbox: {grid_bbox}")
     print(f"unassigned words: {len(unassigned)}")
     for w in unassigned[:30]:
         print(f"  {w['bbox']} {w['text']!r}")
