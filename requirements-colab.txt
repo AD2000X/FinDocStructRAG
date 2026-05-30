@@ -1,0 +1,7 @@
+# Colab GPU dependencies (installed on the Colab VM, not locally on Windows).
+torch
+transformers
+paddleocr
+faiss-cpu
+datasets
+sentence-transformers

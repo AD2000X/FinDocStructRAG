@@ -1,0 +1,7 @@
+# Local development: pure-CPU logic and pure-API LLM calls (no GPU).
+pandas
+numpy
+beautifulsoup4
+lxml
+# Answer-generation LLM SDK (single provider, see src/llm_client.py).
+google-generativeai

@@ -1,0 +1,5 @@
+# Local install entry point.
+#   Local dev:  pip install -r requirements.txt
+#   Colab GPU:  pip install -r requirements-colab.txt
+-r requirements-core.txt
+-r requirements-dev.txt
