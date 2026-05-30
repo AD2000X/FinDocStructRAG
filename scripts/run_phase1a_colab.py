@@ -52,16 +52,14 @@ from src.tatr_postprocess import (  # noqa: E402
     normalize_tatr_prediction,
     validate_grid_geometry,
 )
+from src.tatr_raw import (  # noqa: E402
+    RAW_BOX_KEYS,
+    RAW_LABEL_TO_KEY,
+    GeometryFlagCollector,
+    build_tatr_raw_artifact,
+)
 
 PHASE = "phase1a"
-
-# Predicted structure-model label -> our prediction-dict key. Other classes
-# (table, column/row header) are ignored for topology grid derivation.
-LABEL_TO_KEY = {
-    "table row": "row_boxes",
-    "table column": "col_boxes",
-    "table spanning cell": "spanning_cells",
-}
 
 
 def _load_model(device):
@@ -85,7 +83,11 @@ def _load_model(device):
 
 
 def _infer_boxes(processor, model, device, image, threshold) -> dict:
-    """Run TATR and group predicted boxes by class into a prediction dict."""
+    """Run TATR and group predicted boxes by class (raw: bbox + score + label).
+
+    Keeps all structure classes (incl. headers) so the raw artifact is complete; the
+    topology path only reads row/col/spanning, ignoring the extra keys and fields.
+    """
     import torch
 
     inputs = processor(images=image, return_tensors="pt").to(device)
@@ -97,11 +99,20 @@ def _infer_boxes(processor, model, device, image, threshold) -> dict:
     )[0]
     id2label = model.config.id2label
 
-    pred = {"row_boxes": [], "col_boxes": [], "spanning_cells": []}
-    for label_id, box in zip(result["labels"].tolist(), result["boxes"].tolist()):
-        key = LABEL_TO_KEY.get(id2label[label_id])
+    pred = {key: [] for key in RAW_BOX_KEYS}
+    for label_id, score, box in zip(
+        result["labels"].tolist(),
+        result["scores"].tolist(),
+        result["boxes"].tolist(),
+    ):
+        label = id2label[label_id]
+        key = RAW_LABEL_TO_KEY.get(label)
         if key:
-            pred[key].append({"bbox": [float(v) for v in box]})
+            pred[key].append({
+                "bbox": [float(v) for v in box],
+                "score": float(score),
+                "label": label,
+            })
     return pred
 
 
@@ -122,6 +133,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=50, help="max samples (0 = all)")
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--run-id", default="debug")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="random-sample seed (nested across limits); omit for first-N")
     ap.add_argument("--force-download", action="store_true")
     args = ap.parse_args()
 
@@ -131,13 +144,15 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     download_structure(force=args.force_download)
     root = structure_root()
-    xmls = find_xml_files(root, limit=args.limit or None)
+    xmls = find_xml_files(root, limit=args.limit or None, seed=args.seed)
     images = _image_index(root)
 
     manifest = RunManifest(config.MANIFESTS / f"{PHASE}_{args.run_id}.csv")
     failures = FailureLogger(config.FAILURE_LOGS / f"{PHASE}_{args.run_id}.jsonl")
     pred_dir = config.TABLES_TATR_PREDICTED
     pred_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = config.TABLES_TATR_RAW
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
     processor, model = _load_model(device)
 
@@ -178,11 +193,13 @@ def main() -> None:
         pred_table = normalize_tatr_prediction(pred)
         # Validate the same sorted boxes the grid is built from; raw TATR order would
         # trip the sort check. Geometry issues are quality flags, not sample failures.
+        # Tee the flags: they go to the failure log AND into the raw artifact.
         rows_sorted = sorted(pred["row_boxes"], key=lambda r: r["bbox"][1])
         cols_sorted = sorted(pred["col_boxes"], key=lambda c: c["bbox"][0])
-        validate_grid_geometry(
+        geom = GeometryFlagCollector(delegate=failures)
+        geometry_valid = validate_grid_geometry(
             rows_sorted, cols_sorted, pred_table["cells"],
-            logger=failures, sample_id=sample_id,
+            logger=geom, sample_id=sample_id,
         )
         pred_table["meta"] = {
             "sample_id": sample_id,
@@ -191,6 +208,22 @@ def main() -> None:
         }
         out_path = pred_dir / f"{sample_id}.json"
         out_path.write_text(json.dumps(pred_table), encoding="utf-8")
+
+        # Raw TATR artifact (all classes + scores + geometry flags) for later
+        # visualisation/error-analysis, kept separate from the canonical prediction.
+        raw_artifact = build_tatr_raw_artifact(
+            sample_id=sample_id,
+            image_filename=image_name,
+            prediction=pred,
+            geometry_valid=geometry_valid,
+            geometry_flags=geom.flags,
+            model_id=config.TATR_STRUCTURE_MODEL,
+            threshold=args.threshold,
+            run_id=args.run_id,
+        )
+        (raw_dir / f"{sample_id}.json").write_text(
+            json.dumps(raw_artifact), encoding="utf-8"
+        )
 
         per_sample.append(topology_sample_metrics(pred_table, gt_table))
         manifest.record(
@@ -218,6 +251,7 @@ def main() -> None:
         "status": "completed",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "limit": args.limit,
+        "seed": args.seed,
         "threshold": args.threshold,
         "processed": processed,
         "skipped": skipped,

@@ -680,7 +680,7 @@ or that are pulled into the repo). This section makes that a convention.
 
 | Class | Examples | Lifetime |
 |-------|----------|----------|
-| **Artifact** (keep) | `outputs/manifests/`, `outputs/evaluation/`, `outputs/failure_logs/`, `outputs/tables/{gt_filled,tatr_predicted,ocr_filled}/`, `outputs/figures/` | Persist to Drive; never auto-delete |
+| **Artifact** (keep) | `outputs/manifests/`, `outputs/evaluation/`, `outputs/failure_logs/`, `outputs/tables/{gt_filled,tatr_predicted,tatr_raw,ocr_filled}/`, `outputs/figures/` | Persist to Drive; never auto-delete |
 | **Cache/temp** (deletable) | `/content/fintabnet_c_cache/`, HF / PaddleOCR model cache, `tmp/`, pytest tmp, raw intermediate predictions once metrics are stable | May be cleared; let Colab VM lose them |
 
 Rules:
@@ -725,3 +725,43 @@ outputs/manifests/phase1a_<run>.csv
 outputs/evaluation/phase1a_topology.json
 outputs/failure_logs/phase1a.jsonl
 ```
+
+### 18.5 Raw TATR artifact (`tatr_raw/`)
+
+The canonical `tatr_predicted/<id>.json` keeps only the derived topology grid (what
+metrics score). The raw predicted boxes/scores/labels and the header classes are dropped
+there, but the deliverable visualisations (§5.14 #2 TATR box overlay, #5 grid-geometry
+report) need them. So the runner also writes a **kept** raw artifact per sample:
+
+```
+outputs/tables/tatr_raw/<sample_id>.json
+{ schema_version, sample_id, image_filename, model_id, threshold, run_id,
+  table_boxes, row_boxes, col_boxes, column_headers, projected_row_headers,
+  spanning_cells,                      # each box: {bbox, score, label}
+  geometry_validation: { valid, flags } }
+```
+
+This is a debug/visualisation artifact, **not an extraction output** (P4): it is kept
+separate from `gt_filled/`, `tatr_predicted/`, and `ocr_filled/`, and never reported as a
+result. It lets #2–#5 be drawn without re-running the GPU model. Built by
+`src/tatr_raw.py` (pure, unit-tested); the runner only fills it from inference.
+
+### 18.6 Evaluation subsets (fixed seeds)
+
+This project runs pretrained models (TATR, OCR, embeddings) inside a pipeline; it does
+not retrain them, so there is no train split. But the evaluation sample must be fixed and
+honest: the default sorted order is issuer-biased (alphabetically-first filenames are
+dominated by one filer), so a headline number over "the first N" is not dataset-level.
+
+Use fixed **random** subsets via `find_xml_files(..., seed=...)` (shuffle-then-slice, so
+seeds are nested: seed's 10 ⊂ 50 ⊂ 300). Convention:
+
+| Subset | Purpose | Seed | Size |
+|--------|---------|------|------|
+| debug  | development, failure inspection; re-run freely | 7 | 30-50 |
+| mvp    | stage report / demo numbers; check trends, do not over-tune | 42 | 300 |
+| final  | held-out, last report number; run last, never tune on it | 2026 | 500-1000 (Colab time permitting) |
+
+Always report alongside the metrics: `processed / skipped / failed`, that **metrics are
+computed over successful samples**, and the subset descriptor, e.g. *"topology metrics on
+a fixed random 300-table mvp subset (seed 42)"* — never phrased as a whole-dataset result.

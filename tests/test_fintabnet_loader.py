@@ -42,6 +42,35 @@ def test_parse_structure_xml(tmp_path):
     assert parsed["class_counts"]["table row"] == 2
 
 
+def _make_xmls(tmp_path, n):
+    for i in range(n):
+        (tmp_path / f"t{i:03d}.xml").write_text("<annotation/>", encoding="utf-8")
+    return tmp_path
+
+
+def test_find_xml_files_seed_reproducible(tmp_path):
+    _make_xmls(tmp_path, 20)
+    a = fl.find_xml_files(tmp_path, limit=10, seed=42)
+    b = fl.find_xml_files(tmp_path, limit=10, seed=42)
+    assert a == b
+    assert len(a) == 10
+
+
+def test_find_xml_files_seed_nested_limits(tmp_path):
+    # seed 42 with growing limits yields nested subsets: 10 is a prefix of 30.
+    _make_xmls(tmp_path, 50)
+    small = fl.find_xml_files(tmp_path, limit=10, seed=42)
+    big = fl.find_xml_files(tmp_path, limit=30, seed=42)
+    assert small == big[:10]
+    assert set(small).issubset(set(big))
+
+
+def test_find_xml_files_seed_none_keeps_first_n(tmp_path):
+    _make_xmls(tmp_path, 20)
+    files = fl.find_xml_files(tmp_path, limit=5)
+    assert files == sorted(tmp_path.rglob("*.xml"))[:5]
+
+
 def test_parsed_prediction_feeds_pipeline(tmp_path):
     # The parsed dict is shaped for normalize_tatr_prediction().
     from src.tatr_postprocess import normalize_tatr_prediction

@@ -11,6 +11,7 @@ strings are confirmed by scripts/inspect_fintabnet.py on the first real run.
 
 from __future__ import annotations
 
+import random
 import tarfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -71,9 +72,20 @@ def download_structure(force: bool = False) -> Path:
     return dest
 
 
-def find_xml_files(root: Path, limit: int | None = None) -> list[Path]:
-    """All PASCAL VOC annotation files under root (recursive)."""
+def find_xml_files(
+    root: Path, limit: int | None = None, seed: int | None = None
+) -> list[Path]:
+    """PASCAL VOC annotation files under root (recursive).
+
+    Default order is sorted-by-path (deterministic, but alphabetically-first files are
+    issuer-biased). Pass a seed to draw a reproducible random sample instead: the full
+    list is shuffled with that seed before slicing, so seed=42 with limit 10/50/300
+    yields nested subsets (10 ⊂ 50 ⊂ 300) - a smaller run's samples are reused when the
+    limit grows, keeping the resumable manifest valid.
+    """
     files = sorted(root.rglob("*.xml"))
+    if seed is not None and limit:
+        random.Random(seed).shuffle(files)
     return files[:limit] if limit else files
 
 

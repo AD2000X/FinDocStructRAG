@@ -49,6 +49,7 @@ else:
 # strictly separate (P4).
 TABLES_GT_FILLED = OUTPUT_ROOT / "tables" / "gt_filled"
 TABLES_TATR_PREDICTED = OUTPUT_ROOT / "tables" / "tatr_predicted"
+TABLES_TATR_RAW = OUTPUT_ROOT / "tables" / "tatr_raw"   # raw TATR debug artifact (not an extraction output)
 TABLES_OCR_FILLED = OUTPUT_ROOT / "tables" / "ocr_filled"
 TABLES_FAILURES = OUTPUT_ROOT / "tables" / "failures"
 RAG_INDEX = OUTPUT_ROOT / "rag_index"
