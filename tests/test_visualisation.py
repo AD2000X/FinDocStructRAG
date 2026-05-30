@@ -84,16 +84,25 @@ def test_is_spanning():
         {"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1}) is False
 
 
-def test_draw_functions_return_same_size_image():
+def test_grid_draws_on_same_size_copy():
+    Image = pytest.importorskip("PIL.Image")
+    img = Image.new("RGB", (120, 60), "white")
+    table = _table_2x2_with_span()
+    for out in (vis.draw_cell_grid(img, table), vis.draw_spanning_cells(img, table)):
+        assert out.size == (120, 60)
+        assert out is not img  # drew on a copy
+
+
+def test_overlay_legend_appends_strip_only_for_drawn_classes():
     Image = pytest.importorskip("PIL.Image")
     img = Image.new("RGB", (120, 60), "white")
     raw = {"row_boxes": [{"bbox": [0, 0, 120, 30], "score": 0.9, "label": "table row"}],
            "col_boxes": [{"bbox": [0, 0, 60, 60], "score": 0.8, "label": "table column"}]}
-    table = _table_2x2_with_span()
-    for out in (
-        vis.draw_tatr_overlay(img, raw),
-        vis.draw_cell_grid(img, table),
-        vis.draw_spanning_cells(img, table),
-    ):
-        assert out.size == (120, 60)
-        assert out is not img  # drew on a copy
+    # legend=False: same size as the crop, drawn on a copy.
+    plain = vis.draw_tatr_overlay(img, raw, legend=False)
+    assert plain.size == (120, 60)
+    assert plain is not img
+    # legend=True: same width, taller (a strip for the 2 present classes).
+    with_legend = vis.draw_tatr_overlay(img, raw, legend=True)
+    assert with_legend.width == 120
+    assert with_legend.height > 60

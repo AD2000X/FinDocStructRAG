@@ -27,6 +27,14 @@ OVERLAY_KEYS = (
     "row_boxes", "col_boxes", "column_headers",
     "projected_row_headers", "spanning_cells",
 )
+# Human-readable class names for the overlay legend.
+LEGEND_LABELS = {
+    "row_boxes": "table row",
+    "col_boxes": "table column",
+    "column_headers": "column header",
+    "projected_row_headers": "projected row header",
+    "spanning_cells": "spanning cell",
+}
 CELL_COLOR = (31, 119, 180)
 SPANNING_COLOR = (214, 39, 40)
 
@@ -38,19 +46,51 @@ def _draw_rect(draw, bbox, color, width=2, label=None):
         draw.text((x1 + 2, y1 + 2), label, fill=color)
 
 
-def draw_tatr_overlay(image, raw_artifact, keys=OVERLAY_KEYS, width=2):
-    """#2: raw TATR boxes over a copy of the crop, colour-coded by class (+score)."""
-    from PIL import ImageDraw
+def _legend_strip(width, keys, swatch=14, pad=6, line_h=20):
+    """A white strip captioning each drawn class with its colour swatch."""
+    from PIL import Image, ImageDraw
+
+    rows = [k for k in keys if k in LEGEND_LABELS]
+    strip = Image.new("RGB", (width, pad * 2 + line_h * max(len(rows), 1)), "white")
+    draw = ImageDraw.Draw(strip)
+    y = pad
+    for k in rows:
+        color = CLASS_COLORS.get(k, (0, 0, 0))
+        draw.rectangle([pad, y + 2, pad + swatch, y + 2 + swatch],
+                       fill=color, outline=(0, 0, 0))
+        draw.text((pad + swatch + pad, y + 3), LEGEND_LABELS[k], fill=(0, 0, 0))
+        y += line_h
+    return strip
+
+
+def draw_tatr_overlay(image, raw_artifact, keys=OVERLAY_KEYS, width=2, legend=True):
+    """#2: raw TATR boxes over a copy of the crop, colour-coded by class (+score).
+
+    With legend=True, a caption strip listing the classes actually drawn is appended
+    below the crop, so a viewer does not have to guess what each colour means.
+    """
+    from PIL import Image, ImageDraw
 
     img = image.convert("RGB").copy()
     draw = ImageDraw.Draw(img)
+    present = []
     for key in keys:
+        boxes = raw_artifact.get(key, [])
+        if boxes:
+            present.append(key)
         color = CLASS_COLORS.get(key, (0, 0, 0))
-        for box in raw_artifact.get(key, []):
+        for box in boxes:
             score = box.get("score")
             label = f"{score:.2f}" if isinstance(score, (int, float)) else None
             _draw_rect(draw, box["bbox"], color, width, label)
-    return img
+
+    if not (legend and present):
+        return img
+    strip = _legend_strip(img.width, present)
+    out = Image.new("RGB", (img.width, img.height + strip.height), "white")
+    out.paste(img, (0, 0))
+    out.paste(strip, (0, img.height))
+    return out
 
 
 def is_spanning(cell) -> bool:
