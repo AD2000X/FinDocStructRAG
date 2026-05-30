@@ -288,7 +288,17 @@ def html_to_canonical(html_str: str) -> dict:
 
 ### 5.12 `assign_words_to_cells()` matching rule
 
-Center-in-cell -> max IoU fallback -> unassigned logging -> sort by y,x -> join.
+Center-in-cell -> max IoU fallback -> nearest row x nearest col (only within a
+conservative expanded-grid guard) -> otherwise unassigned -> sort by (y_center,
+x_center) -> join.
+
+The guard margin is `max(pct * extent, one median row-height / col-width)`, so a header
+or footer line sitting roughly one row above/below the grid is caught, while text two or
+more rows away (captions, unit labels, notes, page residue) stays unassigned. Words
+outside the GT grid by more than the guard are not forced into cells: Phase 1B measures
+whether content can be reconstructed inside the GT-structure grid, not whether every
+visible word in the crop lands in some cell. Unassigned/alignment coverage is reported
+separately (see 6.2).
 
 ### 5.13 Numeric normalization (V9 fixes `looks_numeric()`)
 
@@ -425,7 +435,7 @@ Topology (Phase 1A) -> Content (Phase 1B) -> End-to-end QA -> GriTS (Final/stret
 
 **Topology:** row/col count accuracy, cell_occupancy_f1, spanning_cell_detection_rate (via `map_spanning_bbox_to_grid`), header_detection_accuracy, parse/html_success_rate, html_structure_match.
 
-**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1.
+**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1. Computed only over cells that align between the prediction and GT; alignment coverage and word-assignment coverage (assigned/total words, see 5.12) are reported alongside so the metrics are not read as full-crop content recall.
 
 **QA:** qa_exact_match, qa_numeric_relaxed_match (1%).
 
@@ -629,6 +639,8 @@ test_numeric_utils.py adds/fixes:
 > Table evaluation separates topology from content metrics. Cell bboxes are derived from row/column intersections; spanning cells are mapped back to grid coordinates via overlap-ratio thresholding. Grid geometry is validated for overlaps and degenerate cells. Phase 1A produces GT-filled and TATR-predicted tables as separate outputs.
 >
 > Financial number normalization requires at least one digit to trigger OCR character substitutions, preventing false positives on text like "Operating Income (Loss)". Dash-as-zero and percent-as-ratio conventions are configurable.
+>
+> Some FinTabNet crops contain visible text above or below the annotated table grid (header/footer/caption-like lines). Because the GT structure annotation does not include these words as table rows, Phase 1B does not force them into cells; they are tracked as unassigned words and excluded from cell-level content scoring. Content metrics are computed over aligned in-grid cells, and alignment/unassigned coverage is reported separately.
 >
 > FUNSD V1 uses GT tokens/entities for relation-linking. RAG uses BM25+FAISS, RRF, rule-based routing, type-aware reranking, source grounding, numeric validation. HyDE, cross-encoder, LLM rewriting are future work.
 
