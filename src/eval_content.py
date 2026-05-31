@@ -27,15 +27,14 @@ import json
 from pathlib import Path
 
 from .canonical_schema import EVAL_TYPE_CONTENT
-from .numeric_utils import looks_numeric, relaxed_numeric_match
+from .numeric_utils import looks_numeric, normalize_cell_text, relaxed_numeric_match
 
 DEFAULT_IOU_THRESHOLD = 0.5
 
 
 def _norm(text: str) -> str:
-    """Collapse whitespace; both sides are single-space word joins, so this makes the
-    exact-match comparison robust to spacing without loosening it otherwise."""
-    return " ".join((text or "").split())
+    """Normalize cell text for comparison (whitespace + dot-leader formatting)."""
+    return normalize_cell_text(text)
 
 
 def _bbox_center(bbox: list[float]) -> tuple[float, float]:

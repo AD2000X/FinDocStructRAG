@@ -28,14 +28,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
-from src.numeric_utils import looks_numeric, relaxed_numeric_match  # noqa: E402
+from src.numeric_utils import (  # noqa: E402
+    looks_numeric,
+    normalize_cell_text,
+    relaxed_numeric_match,
+)
 from src.run_manifest import read_completed  # noqa: E402
 
 OCR_PHASE = "phase1b_ocr"
 
 
 def _norm(text: str) -> str:
-    return " ".join((text or "").split())
+    return normalize_cell_text(text)
 
 
 def _classify(gt_text: str, ocr_text: str) -> str:
