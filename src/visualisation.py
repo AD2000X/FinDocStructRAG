@@ -114,6 +114,46 @@ def draw_cell_grid(image, table, width=2):
     return img
 
 
+def draw_ocr_debug_overlay(image, gt_table, ocr_table, width=2):
+    """Phase 1B content debug: GT cell boxes (green), TATR pred cell boxes (gray) and OCR
+    word/detection boxes (red) on one crop, to see whether OCR boxes span GT column
+    boundaries (a column-grouping error) or the pred columns are shifted.
+
+    OCR word boxes are read from ocr_table cells' "words" (persisted in ocr_filled).
+    """
+    from PIL import Image, ImageDraw
+
+    gt_color = CLASS_COLORS["column_headers"]   # green
+    pred_color = (127, 127, 127)                # gray
+    word_color = SPANNING_COLOR                 # red
+
+    img = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(img)
+    for c in gt_table.get("cells", []):
+        if "bbox" in c:
+            _draw_rect(draw, c["bbox"], gt_color, width)
+    for c in ocr_table.get("cells", []):
+        if "bbox" in c:
+            _draw_rect(draw, c["bbox"], pred_color, 1)
+        for w in c.get("words", []):
+            if "bbox" in w:
+                _draw_rect(draw, w["bbox"], word_color, width)
+
+    legend = [(gt_color, "GT cell"), (pred_color, "TATR pred cell"),
+              (word_color, "OCR word")]
+    strip_h = 6 + 20 * len(legend) + 6
+    strip = Image.new("RGB", (img.width, strip_h), "white")
+    d2 = ImageDraw.Draw(strip)
+    for i, (color, label) in enumerate(legend):
+        y = 6 + i * 20
+        d2.rectangle([6, y + 2, 20, y + 16], fill=color, outline=(0, 0, 0))
+        d2.text((26, y + 3), label, fill=(0, 0, 0))
+    out = Image.new("RGB", (img.width, img.height + strip_h), "white")
+    out.paste(img, (0, 0))
+    out.paste(strip, (0, img.height))
+    return out
+
+
 def draw_spanning_cells(image, table, width=3):
     """#4: only the spanning cells, labelled with their grid coordinates."""
     from PIL import ImageDraw
