@@ -36,6 +36,8 @@ OCR_PHASE = "phase1b_ocr"
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-id", default="debug", help="the ocr_filled run-id")
+    ap.add_argument("--iou-threshold", type=float, default=0.5,
+                    help="min bbox IoU for a GT cell to match a pred cell")
     args = ap.parse_args()
 
     manifest_path = config.MANIFESTS / f"{OCR_PHASE}_{args.run_id}.csv"
@@ -57,9 +59,10 @@ def main() -> None:
             continue
         pred = json.loads(pred_path.read_text(encoding="utf-8"))
         gt = json.loads(gt_path.read_text(encoding="utf-8"))
-        per_sample.append(content_sample_counts(pred, gt))
+        per_sample.append(
+            content_sample_counts(pred, gt, iou_threshold=args.iou_threshold))
 
-    summary = aggregate_content(per_sample)
+    summary = aggregate_content(per_sample, iou_threshold=args.iou_threshold)
     report_path = write_content_report(
         config.EVALUATION / f"phase1b_content_{args.run_id}.json", summary
     )

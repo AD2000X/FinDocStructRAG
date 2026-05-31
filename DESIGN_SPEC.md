@@ -435,7 +435,7 @@ Topology (Phase 1A) -> Content (Phase 1B) -> End-to-end QA -> GriTS (Final/stret
 
 **Topology:** row/col count accuracy, cell_occupancy_f1, spanning_cell_detection_rate (via `map_spanning_bbox_to_grid`), header_detection_accuracy, parse/html_success_rate, html_structure_match.
 
-**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1. Computed only over cells that align between the prediction and GT; alignment coverage and word-assignment coverage (assigned/total words, see 5.12) are reported alongside so the metrics are not read as full-crop content recall.
+**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1. Cells are aligned SPATIALLY (each GT cell to its max-IoU pred cell, IoU >= a threshold, default 0.5), not by (row,col) index: TATR over/under-segmentation shifts grid indices, so index alignment would compare physically different cells. exact/numeric are computed over matched pairs only; alignment_coverage (matched GT cells / GT cells), mean_alignment_iou, and word-assignment coverage (assigned/total words, see 5.12) are reported alongside so the scores are not read as full-crop content recall.
 
 **QA:** qa_exact_match, qa_numeric_relaxed_match (1%).
 
