@@ -286,6 +286,14 @@ def html_to_canonical(html_str: str) -> dict:
 
 `OCRWord` dataclass + `paddleocr_to_words()` / `tesseract_to_words()`. PaddleOCR priority.
 
+PaddleOCR 3.x is built with `return_word_box=True`: its default line/phrase-level
+detection boxes straddle adjacent narrow financial columns (a column-merge error), so
+`_parse_v3` prefers the word-level `text_word` / `text_word_region` pair (whitespace
+tokens dropped; the only score is per line, shared across its words) and falls back to
+line-level `rec_texts` / `rec_polys` when absent. `enable_mkldnn=False` at the
+constructor avoids the paddlepaddle 3.x CPU oneDNN PIR crash (global FLAGS do not reach
+the paddlex predictor).
+
 ### 5.12 `assign_words_to_cells()` matching rule
 
 Center-in-cell -> max IoU fallback -> nearest row x nearest col (only within a
@@ -299,6 +307,16 @@ outside the GT grid by more than the guard are not forced into cells: Phase 1B m
 whether content can be reconstructed inside the GT-structure grid, not whether every
 visible word in the crop lands in some cell. Unassigned/alignment coverage is reported
 separately (see 6.2).
+
+The final join is `join_word_tokens`, not a naive `" ".join`: word-level OCR emits
+punctuation and a number's digit groups as separate tokens, so a space-join yields dirty
+cell text ("Management ' s", "( Unaudited )", "13 , 223") that both reads badly in a
+Phase 1C RAG chunk and inflates the formatting gap against GT. Conservative rules - no
+space before closing punctuation / separators / `%` / apostrophe, no space after currency
+/ opening brackets, "' s" contracts, separator-split digit groups rejoined - produce clean
+`cell["text"]`. It never changes characters (a comma misread as a period, "29.2018", stays
+a visible mismatch, not whitewashed); the raw tokens remain in `cell["words"]`. Shared by
+gt_filled and ocr_filled so the comparison stays symmetric.
 
 ### 5.13 Numeric normalization (V9 fixes `looks_numeric()`)
 
