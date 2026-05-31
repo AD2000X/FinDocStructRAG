@@ -67,8 +67,18 @@ def build_paddleocr():
     os.environ.setdefault("FLAGS_enable_pir_in_executor", "0")
     from paddleocr import PaddleOCR
 
+    # Table crops are already cropped, upright and flat, so the doc-orientation,
+    # unwarping and textline-orientation sub-models are wasted CPU (and downloads). Keep
+    # only detection + recognition. Guarded: older builds that reject these args fall
+    # back to a plain instance.
     try:
-        return PaddleOCR(lang="en", enable_mkldnn=False)
+        return PaddleOCR(
+            lang="en",
+            enable_mkldnn=False,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
     except (TypeError, ValueError):
         return PaddleOCR(lang="en")
 
