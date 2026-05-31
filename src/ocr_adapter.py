@@ -60,6 +60,12 @@ def build_paddleocr():
     reach the paddlex inference predictor); the FLAGS are still set as a harmless belt-
     and-braces before paddle imports. enable_mkldnn is passed in a try/except because old
     PaddleOCR builds reject unknown constructor args.
+
+    return_word_box=True makes the engine emit word-level tokens and per-word boxes
+    (text_word / text_word_region) in addition to the line-level result. Financial tables
+    pack several narrow numeric columns close together, and the line-level detector merges
+    them into one box that straddles column boundaries; word boxes keep each token in its
+    own column so assign_words_to_cells can place them correctly.
     """
     import os
 
@@ -75,6 +81,7 @@ def build_paddleocr():
         return PaddleOCR(
             lang="en",
             enable_mkldnn=False,
+            return_word_box=True,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
@@ -84,11 +91,35 @@ def build_paddleocr():
 
 
 def _parse_v3(result) -> list[OCRWord]:
-    """PaddleOCR 3.x: predict() returns dict-like results with parallel lists."""
+    """PaddleOCR 3.x: predict() returns dict-like results with parallel lists.
+
+    With return_word_box=True each line carries word-level tokens in `text_word` and a
+    parallel per-token polygon list in `text_word_region` (both include whitespace tokens
+    like " ", which are dropped). These are preferred so adjacent financial columns are
+    not merged into one line-level box. The only recognition score is per line
+    (rec_scores), so every word on a line shares its line's score. When the word-level
+    keys are absent (older build, or the flag was off) this falls back to the line-level
+    rec_texts / rec_polys.
+    """
     words: list[OCRWord] = []
     for page in result or []:
+        scores = page.get("rec_scores") or []
+        text_word = page.get("text_word")
+        regions = page.get("text_word_region")
+        if text_word and regions:
+            for line_idx, (tokens, quads) in enumerate(zip(text_word, regions)):
+                score = float(scores[line_idx]) if line_idx < len(scores) else 1.0
+                for token, quad in zip(tokens, quads):
+                    if not token.strip():
+                        continue
+                    words.append(OCRWord(
+                        text=token,
+                        bbox=_quad_to_bbox(quad),
+                        confidence=score,
+                        source="paddleocr",
+                    ))
+            continue
         texts = page["rec_texts"]
-        scores = page["rec_scores"]
         polys = page.get("rec_polys")
         if polys is None:
             polys = page.get("dt_polys")
