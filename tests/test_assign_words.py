@@ -4,7 +4,7 @@ Lock the placement rules (center-in-cell, IoU fallback, reading-order sort, unas
 logging) with hand-built cells and words. No OCR engine, no image.
 """
 
-from src.tatr_postprocess import assign_words_to_cells
+from src.tatr_postprocess import assign_words_to_cells, join_word_tokens
 from src.ocr_adapter import OCRWord
 
 
@@ -129,3 +129,31 @@ def test_ocrword_to_dict():
     w = OCRWord(text="x", bbox=[1, 2, 3, 4], confidence=0.5, source="paddleocr")
     assert w.to_dict() == {
         "text": "x", "bbox": [1, 2, 3, 4], "confidence": 0.5, "source": "paddleocr"}
+
+
+# --- clean token join (word-level OCR de-spacing) --------------------------
+
+def test_join_currency_number_and_parens():
+    assert join_word_tokens(["$", "13", ",", "223"]) == "$13,223"
+    assert join_word_tokens(["$", "(", "250", ",", "721", ")"]) == "$(250,721)"
+    assert join_word_tokens(["(", "Unaudited", ")"]) == "(Unaudited)"
+
+
+def test_join_percent_and_separators():
+    assert join_word_tokens(["7.50", "%"]) == "7.50%"
+    assert join_word_tokens(["13", ",", "223"]) == "13,223"
+    # a list comma between words keeps its trailing space
+    assert join_word_tokens(["Expenses", ",", "Net", "of"]) == "Expenses, Net of"
+
+
+def test_join_apostrophe_contraction_vs_possessive():
+    # short suffix contracts; a full following word keeps its space
+    assert join_word_tokens(["Management", "'", "s"]) == "Management's"
+    assert join_word_tokens(["Stockholders", "'", "Equity"]) == "Stockholders' Equity"
+
+
+def test_join_does_not_rewrite_real_misread():
+    # comma OCR'd as a period stays a period (a genuine error, not whitewashed)
+    assert join_word_tokens(["29", ".", "2018"]) == "29.2018"
+    # plain words keep normal spacing
+    assert join_word_tokens(["External", "Sales", "By", "Major"]) == "External Sales By Major"

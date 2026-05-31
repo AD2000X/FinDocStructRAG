@@ -8,10 +8,19 @@ everything here is unit-testable with synthetic boxes.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from .canonical_schema import CanonicalTable
 from .failure_logger import FailureLogger
+
+# Tokens that attach to the previous token (no space before): closing punctuation,
+# list/decimal separators, percent, colon/semicolon, and the apostrophe.
+_NO_SPACE_BEFORE = set(",.:;%)]}'")
+# Tokens after which no space is inserted: currency and opening brackets.
+_NO_SPACE_AFTER = set("$([{")
+# A digit, a separator, a digit split across tokens -> rejoin as one number.
+_NUM_SEP = re.compile(r"(\d)\s*([,.])\s*(\d)")
 
 
 def boxes_to_grid(
@@ -447,7 +456,40 @@ def assign_words_to_cells(
 
     for cell in cells:
         cell["words"].sort(key=lambda w: _bbox_center(w["bbox"])[::-1])
-        cell["text"] = " ".join(
+        cell["text"] = join_word_tokens(
             w.get("text", "") for w in cell["words"]
-        ).strip()
+        )
     return cells
+
+
+def join_word_tokens(tokens) -> str:
+    """Join OCR/GT word tokens into clean cell text with conservative spacing.
+
+    Word-level OCR (return_word_box=True) emits punctuation and a number's digit groups
+    as separate tokens, so a naive space-join yields dirty text like "Management ' s",
+    "( Unaudited )", "13 , 223", "7.50 %" - which both reads badly in a RAG chunk and
+    inflates the formatting gap against GT. The rules below put no space before closing
+    punctuation / separators / "%" / apostrophe, and no space after currency / opening
+    brackets; an apostrophe followed by a short suffix ("' s") contracts. A final pass
+    rejoins digit groups split only by a separator ("13 , 223" -> "13,223").
+
+    What it does NOT do: change characters. A comma OCR'd as a period ("29 . 2018") stays
+    a period, so a genuine misread is still visible as a mismatch and not whitewashed. The
+    raw tokens remain in cell["words"] for traceability.
+    """
+    out = ""
+    prev = ""
+    for tok in tokens:
+        if not tok:
+            continue
+        if not out:
+            out, prev = tok, tok
+            continue
+        no_space = (
+            tok[0] in _NO_SPACE_BEFORE
+            or prev[-1] in _NO_SPACE_AFTER
+            or (prev[-1] == "'" and len(tok) <= 2 and tok.isalpha())
+        )
+        out += tok if no_space else " " + tok
+        prev = tok
+    return _NUM_SEP.sub(r"\1\2\3", out).strip()
