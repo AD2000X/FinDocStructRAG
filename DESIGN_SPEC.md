@@ -431,6 +431,13 @@ produced in Phase 1B, not here.
 
 Topology (Phase 1A) -> Content (Phase 1B) -> End-to-end QA -> GriTS (Final/stretch).
 
+These are **transparent proxy metrics**, not a full benchmark. TEDS and GriTS
+(Top/Con/Loc) are the rigorous standard for table extraction and remain future work; the
+Phase 1B aggregate content metric (6.2) is a simplified stand-in for GriTS-Con. ocr_filled
+scores reflect the whole extraction chain (TATR topology + OCR recognition + word-to-cell
+assignment + reconstruction), so a low content score is not a pure OCR-accuracy number -
+hence the multi-view reporting in 6.2.
+
 ### 6.2 Proxy metrics
 
 **Topology:** row/col count accuracy, cell_occupancy_f1, spanning_cell_detection_rate (via `map_spanning_bbox_to_grid`), header_detection_accuracy, parse/html_success_rate, html_structure_match.
@@ -641,6 +648,8 @@ test_numeric_utils.py adds/fixes:
 > Financial number normalization requires at least one digit to trigger OCR character substitutions, preventing false positives on text like "Operating Income (Loss)". Dash-as-zero and percent-as-ratio conventions are configurable.
 >
 > Some FinTabNet crops contain visible text above or below the annotated table grid (header/footer/caption-like lines). Because the GT structure annotation does not include these words as table rows, Phase 1B does not force them into cells; they are tracked as unassigned words and excluded from cell-level content scoring. Content metrics are computed over aligned in-grid cells, and alignment/unassigned coverage is reported separately.
+>
+> Phase 1A/1B report transparent proxy metrics, not a full TEDS/GriTS benchmark. Content scores measure the whole extraction chain (topology + OCR + word-to-cell assignment), reported in three spatial views (strict one-to-one, aggregate content recovery, and a topology-matched subset) so they are not misread as pure OCR accuracy. Full GriTS/TEDS evaluation is future work.
 >
 > FUNSD V1 uses GT tokens/entities for relation-linking. RAG uses BM25+FAISS, RRF, rule-based routing, type-aware reranking, source grounding, numeric validation. HyDE, cross-encoder, LLM rewriting are future work.
 
