@@ -65,6 +65,13 @@ def normalize_financial_number(
     # Drop dot-leader runs (decimals, a single dot between digits, are not matched).
     s = _LEADER_DOTS.sub(' ', s)
 
+    # Word-level OCR emits each number's groups as separate tokens, so a single value can
+    # arrive with spaces around the thousands comma / decimal point ("13 , 223"). Re-join
+    # digit groups split only by a separator so the single-token rule sees one number. A
+    # space that does NOT flank a separator (two columns merged: "2011 2010") is left
+    # intact, so genuine merge errors stay two tokens and are still rejected below.
+    s = re.sub(r'(\d)\s*([,.])\s*(\d)', r'\1\2\3', s)
+
     # Require exactly one numeric token. Zero -> not a number; two or more -> likely two
     # columns merged into one cell (a spatial extraction error), which we leave unmatched
     # rather than silently pick one of.

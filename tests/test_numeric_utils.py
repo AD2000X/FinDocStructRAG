@@ -93,3 +93,26 @@ def test_normalize_cell_text_strips_leaders():
 def test_normalize_cell_text_keeps_decimal_and_currency():
     assert normalize_cell_text("5.00%") == "5.00%"
     assert normalize_cell_text(". . . . $ 45,854") == "$ 45,854"
+
+
+# --- Word-level OCR token spacing (return_word_box=True) -------------------
+
+def test_normalize_rejoins_separator_spaced_digit_groups():
+    # Word-level tokens joined with spaces: separators end up space-padded.
+    assert normalize_financial_number("$ 13 , 223") == 13223.0
+    assert normalize_financial_number("5 , 483") == 5483.0
+    assert normalize_financial_number("$ ( 250 , 721 )") == -250721.0
+    assert normalize_financial_number("131 , 225") == 131225.0
+    # multi-group thousands value
+    assert normalize_financial_number("1 , 234 , 567") == 1234567.0
+
+
+def test_normalize_rejoin_does_not_mask_merged_columns():
+    # A space NOT flanking a separator is a real two-column merge; still rejected.
+    assert normalize_financial_number("2011 2010") is None
+    assert normalize_financial_number("$10,376 $ 9,812") is None
+
+
+def test_relaxed_match_word_spaced_vs_gt():
+    assert relaxed_numeric_match("$ 13 , 223", "$13,223") is True
+    assert relaxed_numeric_match("$ ( 250 , 721 )", "$ (250,721 )") is True
