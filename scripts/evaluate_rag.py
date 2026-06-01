@@ -55,6 +55,11 @@ def main() -> None:
                     help=f"comma list of {','.join(METHODS)} (dense/rrf need the GPU stack)")
     args = ap.parse_args()
 
+    if args.top_k < max(KS):
+        # hit@k / mrr@k up to max(KS) are reported; a shorter ranking would compute the
+        # higher-k metrics over a truncated list and silently understate them.
+        raise SystemExit(f"--top-k must be >= {max(KS)} (the report covers k up to {max(KS)})")
+
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
     bad = [m for m in methods if m not in METHODS]
     if bad:
