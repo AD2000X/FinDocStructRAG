@@ -73,6 +73,48 @@ def test_text_answer_type_for_non_numeric_value():
     assert qs[0]["gold_answer"] == "Deloitte"
 
 
+def test_skips_non_unique_row_label():
+    # Two body rows both labelled "Diluted" -> ambiguous lookup -> no questions for it.
+    table = {
+        "num_rows": 3, "num_cols": 2,
+        "cells": [
+            {"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+             "text": "", "is_header": True},
+            {"row_start": 0, "row_end": 1, "col_start": 1, "col_end": 2,
+             "text": "2010", "is_header": True},
+            {"row_start": 1, "row_end": 2, "col_start": 0, "col_end": 1, "text": "Diluted"},
+            {"row_start": 1, "row_end": 2, "col_start": 1, "col_end": 2, "text": "4.61"},
+            {"row_start": 2, "row_end": 3, "col_start": 0, "col_end": 1, "text": "Diluted"},
+            {"row_start": 2, "row_end": 3, "col_start": 1, "col_end": 2, "text": "1,003"},
+        ],
+        "meta": {"sample_id": "X", "text_source": "gt"},
+    }
+    assert generate_lookup_questions(table) == []
+
+
+def test_skips_too_short_or_non_alpha_label():
+    # Row labels "2009" (no letter) and "PP" (too short) are skipped; "Cash" is kept.
+    table = {
+        "num_rows": 4, "num_cols": 2,
+        "cells": [
+            {"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+             "text": "", "is_header": True},
+            {"row_start": 0, "row_end": 1, "col_start": 1, "col_end": 2,
+             "text": "2018", "is_header": True},
+            {"row_start": 1, "row_end": 2, "col_start": 0, "col_end": 1, "text": "2009"},
+            {"row_start": 1, "row_end": 2, "col_start": 1, "col_end": 2, "text": "4.3"},
+            {"row_start": 2, "row_end": 3, "col_start": 0, "col_end": 1, "text": "PP"},
+            {"row_start": 2, "row_end": 3, "col_start": 1, "col_end": 2, "text": "7"},
+            {"row_start": 3, "row_end": 4, "col_start": 0, "col_end": 1, "text": "Cash"},
+            {"row_start": 3, "row_end": 4, "col_start": 1, "col_end": 2, "text": "500"},
+        ],
+        "meta": {"sample_id": "X", "text_source": "gt"},
+    }
+    qs = generate_lookup_questions(table)
+    assert len(qs) == 1
+    assert qs[0]["question"] == "What was Cash in 2018?"
+
+
 def test_skips_rows_without_label_or_empty_values():
     table = {
         "num_rows": 3, "num_cols": 2,
