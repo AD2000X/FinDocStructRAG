@@ -61,6 +61,9 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None,
                     help="random-sample seed (nested across limits); omit for first-N")
     ap.add_argument("--force-download", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="reprocess all samples, ignoring the manifest (use after a logic "
+                         "change, e.g. header marking, to regenerate existing outputs)")
     args = ap.parse_args()
 
     download_structure(force=args.force_download)
@@ -76,7 +79,7 @@ def main() -> None:
     words_total = words_assigned = 0
     for xml in xmls:
         sample_id = xml.stem
-        if manifest.is_done(sample_id):
+        if not args.force and manifest.is_done(sample_id):
             skipped += 1
             continue
 

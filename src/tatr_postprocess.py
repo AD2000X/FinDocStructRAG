@@ -290,15 +290,56 @@ def normalize_table_annotation(annotation: dict) -> CanonicalTable:
     return {"num_rows": num_rows, "num_cols": num_cols, "cells": cells}
 
 
+def _iomin(a: list[float], b: list[float]) -> float:
+    """Intersection over the smaller of the two areas.
+
+    Unlike IoU this stays ~1.0 when one box is much smaller than the other, so it fires
+    whether a column-header box spans the whole header block (a grid cell sits inside it)
+    or is a narrow text-tight band inside the cell.
+    """
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    smaller = min(area_a, area_b)
+    return inter / smaller if smaller > 0.0 else 0.0
+
+
+def _mark_column_headers(
+    cells: list[dict], header_boxes: list[dict], min_overlap: float = 0.5
+) -> None:
+    """Set is_header on grid cells that substantially overlap a column-header box.
+
+    Overlap is intersection-over-min-area (IoMin), not a center-in-box test: on real
+    FinTabNet annotations a column-header box can be a narrow band that does not contain
+    the grid cell's center, so the center test marked nothing. IoMin >= min_overlap catches
+    both a header box that encloses the cell and a narrow band that sits inside it. This is
+    what serialization (column headers) and QA generation rely on.
+    """
+    if not header_boxes:
+        return
+    for cell in cells:
+        if "bbox" not in cell:
+            continue
+        cb = cell["bbox"]
+        if any(_iomin(cb, hb["bbox"]) >= min_overlap for hb in header_boxes):
+            cell["is_header"] = True
+
+
 def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     """TATR prediction -> canonical schema (same shape as the GT path).
 
-    Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with
-    a "bbox" key. Header detection is added with the Colab metrics step.
+    Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with a
+    "bbox" key. When column_headers boxes are present (the GT structure XML and the TATR
+    raw artifact both carry them), the cells they cover are flagged is_header.
     """
     rows = sorted(prediction.get("row_boxes", []), key=lambda r: r["bbox"][1])
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))
+    _mark_column_headers(cells, prediction.get("column_headers", []))
     return {"num_rows": len(rows), "num_cols": len(cols), "cells": cells}
 
 

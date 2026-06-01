@@ -10,6 +10,7 @@ from src.tatr_postprocess import (
     can_convert_to_canonical,
     html_to_canonical,
     map_spanning_bbox_to_grid,
+    normalize_tatr_prediction,
     validate_grid_geometry,
 )
 
@@ -28,6 +29,40 @@ def _cols():
         {"bbox": [10, 0, 20, 30]},
         {"bbox": [20, 0, 30, 30]},
     ]
+
+
+def test_normalize_marks_column_headers():
+    # 3x3 grid; a column_headers box spans the top row across the full width.
+    pred = {
+        "row_boxes": _rows(),
+        "col_boxes": _cols(),
+        "column_headers": [{"bbox": [0, 0, 30, 10]}],
+    }
+    table = normalize_tatr_prediction(pred)
+    header = [c for c in table["cells"] if c["row_start"] == 0]
+    body = [c for c in table["cells"] if c["row_start"] > 0]
+    assert header and all(c["is_header"] for c in header)
+    assert body and not any(c["is_header"] for c in body)
+
+
+def test_normalize_without_column_headers_marks_nothing():
+    table = normalize_tatr_prediction({"row_boxes": _rows(), "col_boxes": _cols()})
+    assert not any(c["is_header"] for c in table["cells"])
+
+
+def test_normalize_marks_header_when_box_misses_cell_center():
+    # Real-data regression: the column-header box is a narrow band at the top of row 0
+    # (y 0-4), so it does NOT contain row 0's cell center (y=5) - the old center-in-box
+    # test marked nothing. Overlap (IoMin) must still flag the row-0 cells as headers.
+    rows = [{"bbox": [0, 0, 30, 10]}, {"bbox": [0, 10, 30, 20]}]
+    cols = [{"bbox": [0, 0, 30, 20]}]
+    pred = {"row_boxes": rows, "col_boxes": cols,
+            "column_headers": [{"bbox": [0, 0, 30, 4]}]}
+    table = normalize_tatr_prediction(pred)
+    row0 = [c for c in table["cells"] if c["row_start"] == 0]
+    row1 = [c for c in table["cells"] if c["row_start"] == 1]
+    assert row0 and all(c["is_header"] for c in row0)
+    assert row1 and not any(c["is_header"] for c in row1)
 
 
 # --- spanning cell mapping (the 5 required tests) ---------------------------------
