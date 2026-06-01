@@ -16,9 +16,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 
 from . import config
+
+# A rate-limit error carries a suggested wait ("Please retry in 36.4s").
+_RETRY_RE = re.compile(r"retry in ([\d.]+)\s*s", re.IGNORECASE)
 
 # The model must reply with this JSON shape and nothing else.
 _PROMPT_TEMPLATE = """You are a financial-report QA assistant. Answer the question using ONLY \
@@ -109,13 +113,29 @@ def generate_answer(question: str, evidence: list[dict], complete=None) -> LLMAn
     return parse_answer(raw, [e["chunk_id"] for e in evidence])
 
 
-def build_gemini_complete(model_name: str | None = None):
+def _retry_delay_seconds(error_text: str, attempt: int) -> float:
+    """Seconds to wait before retrying a rate-limited call.
+
+    Prefer the server's suggested delay ("Please retry in 36.4s") plus a 1s margin; otherwise
+    exponential backoff capped at 60s.
+    """
+    m = _RETRY_RE.search(error_text or "")
+    if m:
+        return float(m.group(1)) + 1.0
+    return min(60.0, 5.0 * (2 ** attempt))
+
+
+def build_gemini_complete(model_name: str | None = None, max_retries: int = 6):
     """Build the Gemini completer (Colab/API) -> callable prompt -> raw text. Lazy import.
 
     Reads the key from GEMINI_API_KEY or GOOGLE_API_KEY, and the model from GEMINI_MODEL or
     config.LLM_MODEL. google-generativeai is the single provider SDK (P5).
+
+    Retries on a rate-limit error (429 ResourceExhausted), waiting the server's suggested
+    delay, so a free-tier per-minute request cap throttles the run instead of crashing it.
     """
     import google.generativeai as genai
+    from google.api_core.exceptions import ResourceExhausted
 
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
@@ -125,6 +145,13 @@ def build_gemini_complete(model_name: str | None = None):
                                   or config.LLM_MODEL)
 
     def complete(prompt: str) -> str:
-        return model.generate_content(prompt).text or ""
+        for attempt in range(max_retries):
+            try:
+                return model.generate_content(prompt).text or ""
+            except ResourceExhausted as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(_retry_delay_seconds(str(e), attempt))
+        return ""  # unreachable: the loop returns or raises
 
     return complete

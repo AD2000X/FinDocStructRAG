@@ -3,7 +3,15 @@
 A fake completer exercises the full prompt-build -> parse path without Gemini (P3).
 """
 
-from src.llm_client import LLMAnswer, build_prompt, generate_answer, parse_answer
+import pytest
+
+from src.llm_client import (
+    LLMAnswer,
+    _retry_delay_seconds,
+    build_prompt,
+    generate_answer,
+    parse_answer,
+)
 
 _EVIDENCE = [
     {"chunk_id": "table:a", "text": "Revenue: 2018 = 13,223"},
@@ -51,6 +59,16 @@ def test_parse_non_json_falls_back_to_raw_text():
     assert ans.answer == "13,223"
     assert ans.citations == []
     assert ans.abstained is False
+
+
+def test_retry_delay_uses_server_suggestion():
+    assert _retry_delay_seconds("Please retry in 36.4s.", 0) == pytest.approx(37.4)
+
+
+def test_retry_delay_falls_back_to_capped_backoff():
+    assert _retry_delay_seconds("quota exceeded", 0) == 5.0
+    assert _retry_delay_seconds("quota exceeded", 2) == 20.0
+    assert _retry_delay_seconds("quota exceeded", 10) == 60.0  # capped
 
 
 def test_generate_answer_with_fake_completer():
