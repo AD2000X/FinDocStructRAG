@@ -290,20 +290,42 @@ def normalize_table_annotation(annotation: dict) -> CanonicalTable:
     return {"num_rows": num_rows, "num_cols": num_cols, "cells": cells}
 
 
-def _mark_column_headers(cells: list[dict], header_boxes: list[dict]) -> None:
-    """Set is_header on grid cells whose center falls inside a column-header box.
+def _iomin(a: list[float], b: list[float]) -> float:
+    """Intersection over the smaller of the two areas.
 
-    column_headers boxes span the header band across the table width, so a grid cell
-    centered inside one is a header cell. This is what serialization (column headers) and
-    QA generation rely on; without it every cell is is_header=False.
+    Unlike IoU this stays ~1.0 when one box is much smaller than the other, so it fires
+    whether a column-header box spans the whole header block (a grid cell sits inside it)
+    or is a narrow text-tight band inside the cell.
+    """
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    smaller = min(area_a, area_b)
+    return inter / smaller if smaller > 0.0 else 0.0
+
+
+def _mark_column_headers(
+    cells: list[dict], header_boxes: list[dict], min_overlap: float = 0.5
+) -> None:
+    """Set is_header on grid cells that substantially overlap a column-header box.
+
+    Overlap is intersection-over-min-area (IoMin), not a center-in-box test: on real
+    FinTabNet annotations a column-header box can be a narrow band that does not contain
+    the grid cell's center, so the center test marked nothing. IoMin >= min_overlap catches
+    both a header box that encloses the cell and a narrow band that sits inside it. This is
+    what serialization (column headers) and QA generation rely on.
     """
     if not header_boxes:
         return
     for cell in cells:
         if "bbox" not in cell:
             continue
-        center = _bbox_center(cell["bbox"])
-        if any(_point_in_bbox(center, hb["bbox"]) for hb in header_boxes):
+        cb = cell["bbox"]
+        if any(_iomin(cb, hb["bbox"]) >= min_overlap for hb in header_boxes):
             cell["is_header"] = True
 
 
