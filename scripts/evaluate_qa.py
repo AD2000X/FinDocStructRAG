@@ -2,6 +2,8 @@
 
 Triggered from the notebook (needs the GPU embedding stack + a Gemini key):
     GEMINI_API_KEY=... python scripts/evaluate_qa.py
+    # smoke-test the key cheaply first (3 LLM calls):
+    GEMINI_API_KEY=... python scripts/evaluate_qa.py --limit 3 --corpus gt_markdown
 
 For each corpus ({gt,ocr} x {markdown,linearized}) this retrieves with RRF (BM25 + dense
 fused - the method carried forward from the retrieval matrix), feeds the top-k chunks to the
@@ -44,12 +46,23 @@ def _rrf_ranked(bm25: BM25Index, dense, question: str, top_k: int) -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--top-k", type=int, default=10, help="chunks retrieved per question")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="cap questions (0 = all); use a few to smoke-test the key cheaply")
+    ap.add_argument("--corpus", choices=[*CORPORA, "all"], default="all",
+                    help="evaluate one corpus or all four")
     args = ap.parse_args()
 
     qa_path = config.QA_DIR / "qa_all.jsonl"
     if not qa_path.exists():
         raise SystemExit(f"no QA set at {qa_path} (run build_qa_dataset.py first)")
     questions = _load_jsonl(qa_path)
+    if args.limit:
+        questions = questions[:args.limit]
+    corpora = CORPORA if args.corpus == "all" else [args.corpus]
+
+    # One LLM call per (corpus, question): make the cost explicit before any API spend.
+    print(f"QA eval: {len(corpora)} corpus x {len(questions)} questions "
+          f"= {len(corpora) * len(questions)} LLM calls")
 
     # Colab/API pieces, loaded once and reused across corpora.
     from src.dense_retrieval import DenseIndex, build_bge_embedder
@@ -58,7 +71,7 @@ def main() -> None:
     complete = build_gemini_complete()
 
     report = {"num_questions": len(questions), "top_k": args.top_k, "configs": {}}
-    for name in CORPORA:
+    for name in corpora:
         chunk_path = config.CHUNKS / f"{name}.jsonl"
         if not chunk_path.exists():
             print(f"[skip] {name}: no corpus at {chunk_path}")
