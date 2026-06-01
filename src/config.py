@@ -74,4 +74,4 @@ EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 # is overridable at runtime by the GEMINI_MODEL env var, so a deprecated default can be
 # bumped without a code change.
 LLM_PROVIDER = "gemini"
-LLM_MODEL = "gemini-2.0-flash"
+LLM_MODEL = "gemini-2.5-flash-lite"
