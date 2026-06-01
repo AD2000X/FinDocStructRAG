@@ -19,3 +19,7 @@ venv/
 .mcp.json
 tmp/
 memory/
+
+# Local-only engineering journal + scratch screenshots (never committed)
+DEVLOG.md
+output*.png
