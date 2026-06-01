@@ -53,6 +53,7 @@ TABLES_TATR_RAW = OUTPUT_ROOT / "tables" / "tatr_raw"   # raw TATR debug artifac
 TABLES_OCR_FILLED = OUTPUT_ROOT / "tables" / "ocr_filled"
 TABLES_FAILURES = OUTPUT_ROOT / "tables" / "failures"
 RAG_INDEX = OUTPUT_ROOT / "rag_index"
+CHUNKS = RAG_INDEX / "chunks"   # serialized table chunks per (text_source, serialization)
 EVALUATION = OUTPUT_ROOT / "evaluation"
 FAILURE_LOGS = OUTPUT_ROOT / "failure_logs"
 MANIFESTS = OUTPUT_ROOT / "manifests"
