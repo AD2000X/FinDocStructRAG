@@ -57,6 +57,19 @@ def _column_headers(grid, header_rows, n_cols) -> list[str]:
     return headers
 
 
+def table_grid(table):
+    """Shared structural view of a table, reused by serialization and QA generation.
+
+    Returns (grid, n_rows, n_cols, header_rows, col_headers): grid[r][c] is the cell
+    covering (r, c) or None; header_rows are the column-header row indices; col_headers[c]
+    is the joined header text for column c.
+    """
+    grid, n_rows, n_cols = _covering_grid(table)
+    header_rows = _header_rows(grid, n_rows, n_cols)
+    col_headers = _column_headers(grid, header_rows, n_cols)
+    return grid, n_rows, n_cols, header_rows, col_headers
+
+
 def serialize_markdown(table) -> str:
     """Render the table as a GitHub-flavored markdown grid.
 
@@ -90,13 +103,10 @@ def serialize_linearized(table) -> str:
     own lines. Column 0 of a body row is its row label. Empty values are skipped, so the
     text stays compact for retrieval.
     """
-    grid, n_rows, n_cols = _covering_grid(table)
+    grid, n_rows, n_cols, header_rows, col_headers = table_grid(table)
     if n_rows == 0 or n_cols == 0:
         return ""
-
-    header_rows = _header_rows(grid, n_rows, n_cols)
     header_set = set(header_rows)
-    col_headers = _column_headers(grid, header_rows, n_cols)
 
     lines = []
     for r in range(n_rows):
