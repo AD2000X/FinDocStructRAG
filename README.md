@@ -16,7 +16,7 @@ Local development (CPU logic + tests, no GPU):
 pip install -r requirements.txt
 ```
 
-GPU steps (TATR, OCR, FAISS) run on a Colab VM, which installs:
+GPU steps (TATR, OCR, dense embedding) run on a Colab VM, which installs:
 
 ```
 pip install -r requirements-colab.txt
@@ -47,9 +47,12 @@ pytest
 
 ## Status
 
-Phase 0 (repo foundation) and Phase 1A-local (CPU table-topology logic) are done:
-package skeleton, `config.py` with Colab/local path detection, the canonical table
-schema, failure logging, financial number normalization, the TATR post-processing logic
-(grid derivation, spanning-cell mapping, grid validation, occupancy-aware HTML parsing,
-annotation gate), and the synthetic unit tests. Phase 1A-colab (real TATR inference +
-topology metrics) is next. See [PLAN.md](PLAN.md) for the phase roadmap.
+Phases 0 through 1C are complete; the v1 release (table-only RAG) is merged to `main`.
+Delivered: the repo foundation; Phase 1A table topology (TATR grid derivation,
+spanning-cell mapping, grid validation, occupancy-aware HTML parsing); Phase 1B OCR
+content extraction (word-to-cell assignment, financial number normalization, content
+metrics); and Phase 1C table-only RAG (BM25 + dense BGE cosine + RRF retrieval, one
+chunk per table, single-provider grounded answer generation, GT-filled vs OCR-filled
+corpora scored separately). Next is Phase 2 (DocLayNet layout integration: page-level
+region detection -> table crop -> the existing Phase 1A/1B pipeline). See
+[PLAN.md](PLAN.md) for the phase roadmap.

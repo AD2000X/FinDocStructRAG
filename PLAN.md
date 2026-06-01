@@ -23,17 +23,17 @@ strong reason. Items marked "experiment" are decided by Phase results; items mar
 | Table structure recognition | `microsoft/table-transformer-structure-recognition-v1.1-fin` | V9 §4.2 |
 | Table detection (fallback) | `microsoft/table-transformer-detection` | V9 §4.2 |
 | OCR | PaddleOCR (priority) > Tesseract | V9 §5.5/5.11 |
-| Retrieval | BM25 + FAISS + RRF + type-aware reranking + rule-based routing | V9 §7 |
+| Retrieval | BM25 + dense (exact BGE cosine; FAISS optional if the corpus grows) + RRF + type-aware reranking + rule-based routing | V9 §7 |
 | Reranking | heuristic / rule-based (cross-encoder is future work) | V9 §7 |
-| **Embedding model (FAISS dense)** | **`BAAI/bge-small-en-v1.5`** | This plan (V9 unspecified) |
+| **Embedding model (dense retrieval)** | **`BAAI/bge-small-en-v1.5`** | This plan (V9 unspecified) |
 | **Answer-generation LLM** | **OpenRouter (OpenAI-compatible gateway; default `openai/gpt-4o-mini`; single provider, swappable via `src/llm_client.py`)** | This plan |
 | Numeric normalization | `src/numeric_utils.py` (V9-fixed `looks_numeric`) | V9 §5.13 |
-| Eval tooling | pycocotools / ranx / seqeval / sklearn / GriTS (final) / custom proxy | V9 §8 |
+| Eval tooling | pycocotools / custom retrieval metrics (hit/recall/MRR; ranx optional) / seqeval / sklearn / GriTS (final) / custom proxy | V9 §8 |
 | Demo | Gradio | V9 |
 | Environment / workflow | VS Code Colab extension + git-as-truth + `.py` core / `.ipynb` runner | This plan §1 |
 
 **Deliberately undecided (not an omission)**
-- Table serialization: Markdown vs linearized -> decided by a **head-to-head experiment** in Phase 1C (V9 §7)
+- Table serialization: Markdown vs linearized -> **resolved in Phase 1C: linearized carries forward** (reproducible +0.10 numeric_relaxed over markdown on both the gt and ocr corpora, temperature=0)
 - RAG faithfulness (Ragas/DeepEval), LLM-as-Judge -> **optional** (V9 §7/§8)
 - HyDE / LLM rewriting / cross-encoder -> **future work** (V9 §7)
 - **Page-level layout detector model** (the model that produces DocLayNet-class regions) -> **pin before Phase 2 coding** (§3 Phase 2). DocLayNet is the dataset / AP-IoU target, not a model; the spec (§9) assumes a HF detector exposing `config.id2label`. Candidates and recommendation are in the Phase 2 section.
@@ -75,7 +75,7 @@ it pulled from GitHub into the Colab VM's `/content`. The two copies stay in syn
 ### Dual dev loops
 
 - **Local loop (CPU, seconds)**: pure-Python logic (`tatr_postprocess`, `numeric_utils`, `html_to_canonical`, `bbox_utils`, `chunking`) plus all of `tests/` -> local `pytest`, never touching Colab.
-- **Colab loop (GPU)**: GPU-bound inference (TATR, PaddleOCR, DocLayNet) and FAISS index building -> notebook runs on the Colab kernel.
+- **Colab loop (GPU)**: GPU-bound inference (TATR, PaddleOCR, DocLayNet) and dense-embedding / index building -> notebook runs on the Colab kernel.
 
 ### Colab notebook role: runner, not source code
 
@@ -283,22 +283,22 @@ Phase 1C: Table-only RAG QA
 - Use only extracted / reconstructed tables (Phase 1A/1B outputs)
 - Build table chunks (metadata-preserving)
 - Compare Markdown vs linearized table serialization
-- BM25 + FAISS (dense embedding: BAAI/bge-small-en-v1.5)
+- BM25 + dense retrieval (exact BGE cosine, BAAI/bge-small-en-v1.5; FAISS optional if the corpus grows)
 - RRF fusion
 - Source-grounded QA (with citations)
 - Report GT-filled QA vs OCR-filled QA separately
 - Numeric cross-check using numeric_utils.py
 ```
 
-**LLM is used only in answer generation**: retrieval has no LLM at any point (BM25 + FAISS
-+ RRF + type-aware reranking). Only the final step "generate an answer from evidence" uses a
+**LLM is used only in answer generation**: retrieval has no LLM at any point (BM25 + dense
+BGE cosine + RRF + type-aware reranking). Only the final step "generate an answer from evidence" uses a
 **single API LLM**, through the `src/llm_client.py` abstraction (see §4 guideline).
 
 **Acceptance criteria**
 - End-to-end: query -> retrieve table chunk -> grounded answer + source citation
 - Markdown vs linearized serialization, two comparison results
 - GT-filled QA and OCR-filled QA metrics reported separately (never mixed)
-- Retrieval metrics (using `ranx`)
+- Retrieval metrics (custom hit@k / recall@k / MRR@k; `ranx` optional)
 
 ---
 
@@ -462,7 +462,7 @@ GT-filled tables are used only for QA pipeline validation and must not be report
 The project is about table extraction + OCR + layout + structure-aware RAG, **not an LLM
 comparison**. Therefore:
 
-- **Retrieval has no LLM at any point**: BM25 + FAISS + RRF + type-aware reranking. HyDE / LLM rewriting / cross-encoder are future work.
+- **Retrieval has no LLM at any point**: BM25 + dense BGE cosine + RRF + type-aware reranking. HyDE / LLM rewriting / cross-encoder are future work.
 - **LLM is used only in answer generation**: after retrieving evidence, generate an answer from that evidence.
 - **The MVP wires up only one API LLM** (decided: OpenRouter, an OpenAI-compatible gateway; default model `openai/gpt-4o-mini`), not several providers at once, to avoid an explosion in key management / prompt differences / response format / cost tracking / eval / debug complexity. OpenRouter also lets the model be swapped without changing the SDK.
 - **Swappability comes from the wrapper (strict boundary)**: all provider differences (prompt templates, response parsing, retry, cost logging) are contained in `src/llm_client.py`, exposing only `generate_answer()` to the RAG pipeline; switching provider changes only `llm_client.py` + config `LLM_PROVIDER`, not the RAG pipeline.
@@ -522,14 +522,19 @@ Implementation details:
 
 ## 7. Next steps
 
-**Finish Phase 0 first, then immediately attach Phase 1A** (do not open two tracks at once).
+**Phases 0 through 1C are complete and merged** (v1 = table-only RAG). The next track is
+**Phase 2 (DocLayNet layout integration)**; do not open a second track in parallel. The
+detector is decided (HF DETR-on-DocLayNet, see §3 Phase 2) but its model id is not yet pinned.
+Order:
 
-Phase 1A depends on what Phase 0 stabilizes first: `src/config.py` (with fixed path
-variables), the canonical schema, `failure_logger.py`, the test structure, and output-path
-conventions. So the order is:
-
-1. Finish Phase 0, ensuring the repo skeleton, `config.py`, schema, and 4 smoke tests work
-2. **After Phase 0 acceptance passes**, immediately enter Phase 1A: do Phase 1A-local first (synthetic unit tests), then go to Colab for Phase 1A-colab (real TATR inference + topology metrics + screenshots)
+1. **Detector smoke (Colab T4)**: confirm the chosen HF DETR-on-DocLayNet model loads, runs on a
+   couple of DocLayNet pages, and exposes `config.id2label`; only then pin `config.LAYOUT_MODEL`.
+2. **Phase 2-local first** (CPU, synthetic unit tests, P3): `bbox_utils.py` (coordinate
+   conversions, IoU, crop-with-padding, dedup), `layout_parsing.py` (`LAYOUT_LABEL_MAP` +
+   `normalize_label` + the sequential/fallback selection over an injected detector),
+   `table_detection.py` (the `table-transformer-detection` fallback adapter).
+3. **Then Phase 2-colab**: run detection on a fixed DocLayNet subset, layout AP/IoU via
+   `pycocotools`, and confirm a detected table crop feeds the existing Phase 1A topology pipeline.
 
 ---
 

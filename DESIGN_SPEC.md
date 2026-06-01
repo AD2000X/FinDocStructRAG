@@ -477,11 +477,11 @@ hence the multi-view reporting in 6.2.
 
 ## 7. RAG
 
-BM25 + FAISS + RRF + type-aware reranking + query routing (rule-based) + source grounding +
-`normalize_financial_number()` cross-check. HyDE / LLM rewriting / cross-encoder = future
-work. LLM-as-Judge = optional.
+BM25 + dense (exact BGE cosine; FAISS optional if the corpus grows) + RRF + type-aware
+reranking + query routing (rule-based) + source grounding + `normalize_financial_number()`
+cross-check. HyDE / LLM rewriting / cross-encoder = future work. LLM-as-Judge = optional.
 
-Dense embedding for the FAISS index: **`BAAI/bge-small-en-v1.5`** (locked in
+Dense embedding for the dense retrieval index: **`BAAI/bge-small-en-v1.5`** (locked in
 [PLAN.md](PLAN.md) §0; V9 left it unspecified).
 
 Structure-aware chunking (text/table/KV/header routing). Table serialization experiment
@@ -532,7 +532,7 @@ Rules:
 | Table Final | GriTS |
 | FUNSD relation V1 | custom + sklearn |
 | FUNSD token V2 | seqeval |
-| Retrieval | ranx |
+| Retrieval | custom hit/recall/MRR (ranx optional) |
 | Numeric | src/numeric_utils.py |
 | RAG faithfulness | Ragas/DeepEval (optional) |
 | Tests | pytest |
@@ -569,7 +569,7 @@ gt_format_report gate -> `html_to_canonical()` (occupancy-aware) -> `boxes_to_gr
 PaddleOCR -> OCRWord -> `assign_words_to_cells()` -> `numeric_utils` (V9 `looks_numeric`) -> content metrics -> end-to-end QA. Push GitHub V1.
 
 ### Phase 1C (~2-3 days, added in PLAN.md)
-Table-only RAG QA: build table chunks -> BM25 + FAISS (`BAAI/bge-small-en-v1.5`) + RRF -> Markdown vs linearized serialization experiment -> source-grounded QA via `src/llm_client.py` -> report GT-filled QA vs OCR-filled QA separately. This is the v1 release (see PLAN.md §2).
+Table-only RAG QA: build table chunks -> BM25 + dense (exact BGE cosine, `BAAI/bge-small-en-v1.5`; FAISS optional if the corpus grows) + RRF -> Markdown vs linearized serialization experiment (resolved: linearized carries forward) -> source-grounded QA via `src/llm_client.py` -> report GT-filled QA vs OCR-filled QA separately. This is the v1 release (see PLAN.md §2).
 
 ### Phase 2 (~1-1.5 weeks)
 bbox_utils + label mapping -> DocLayNet -> sequential + fallback.
@@ -671,11 +671,16 @@ test_numeric_utils.py adds/fixes:
 >
 > Phase 1A/1B report transparent proxy metrics, not a full TEDS/GriTS benchmark. Content scores measure the whole extraction chain (topology + OCR + word-to-cell assignment), reported in three spatial views (strict one-to-one, aggregate content recovery, and a topology-matched subset) so they are not misread as pure OCR accuracy. Full GriTS/TEDS evaluation is future work.
 >
-> FUNSD V1 uses GT tokens/entities for relation-linking. RAG uses BM25+FAISS, RRF, rule-based routing, type-aware reranking, source grounding, numeric validation. HyDE, cross-encoder, LLM rewriting are future work.
+> FUNSD V1 uses GT tokens/entities for relation-linking. RAG uses BM25 + dense BGE cosine (FAISS optional if the corpus grows), RRF, rule-based routing, type-aware reranking, source grounding, numeric validation. HyDE, cross-encoder, LLM rewriting are future work.
 
 ---
 
 ## 15. Resume bullets
+
+> Scope note: these bullets describe the **full-project target** (Phases 1-4). As of now,
+> Phases 0-1C are delivered and merged (FinTabNet.c table topology, OCR content extraction,
+> and table-only RAG QA = v1). DocLayNet layout (Phase 2) and FUNSD relations (Phase 3) are
+> planned / in progress, not yet built — describe current state with the delivered scope.
 
 **Short version:**
 
@@ -683,7 +688,7 @@ Built a production-oriented Document AI prototype for PDFs, financial tables, an
 
 **Technical version:**
 
-Developed a Colab-compatible Document AI pipeline combining Table Transformer structure recognition with cell bbox derivation from row/column intersections, spanning cell bbox-to-grid mapping, grid geometry validation, occupancy-aware HTML parsing, OCR word-to-cell assignment with conservative financial number normalization, DocLayNet layout parsing with label normalization, FUNSD relation-linking baseline, structure-aware chunking, BM25/FAISS hybrid retrieval with RRF and type-aware reranking, and source-grounded QA. Topology and content evaluation are reported separately.
+Developed a Colab-compatible Document AI pipeline combining Table Transformer structure recognition with cell bbox derivation from row/column intersections, spanning cell bbox-to-grid mapping, grid geometry validation, occupancy-aware HTML parsing, OCR word-to-cell assignment with conservative financial number normalization, DocLayNet layout parsing with label normalization, FUNSD relation-linking baseline, structure-aware chunking, BM25 + dense (BGE cosine) hybrid retrieval with RRF and type-aware reranking, and source-grounded QA. Topology and content evaluation are reported separately.
 
 ---
 
@@ -706,7 +711,7 @@ Developed a Colab-compatible Document AI pipeline combining Table Transformer st
 These items were not in the original V9 spec and were added during planning. They do not
 change V9's table/OCR/eval design; they fill gaps V9 left open:
 
-- **Embedding model** for the FAISS dense index: `BAAI/bge-small-en-v1.5` (§7). V9 specified hybrid retrieval but no embedding model.
+- **Embedding model** for the dense retrieval index: `BAAI/bge-small-en-v1.5` (§7). V9 specified hybrid retrieval but no embedding model.
 - **Answer-generation contract** (§7.1): a single-provider, swappable `src/llm_client.py` returning a provider-neutral `LLMAnswer`. V9 mentioned source-grounded QA but not how the answer is generated or which LLM.
 - **Phase 1C** (§11): table-only RAG QA inserted between content extraction and the full pipeline, making the first demonstrable RAG loop the v1 release instead of waiting for Phase 4.
 - **Repo layout** (§12): `scripts/` for repeatable runners, three-way requirements split, `src/llm_client.py`, and `outputs/manifests/` for resumable batch runs.
