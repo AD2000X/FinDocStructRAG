@@ -286,9 +286,37 @@ def html_to_canonical(html_str: str) -> dict:
 
 `OCRWord` dataclass + `paddleocr_to_words()` / `tesseract_to_words()`. PaddleOCR priority.
 
+PaddleOCR 3.x is built with `return_word_box=True`: its default line/phrase-level
+detection boxes straddle adjacent narrow financial columns (a column-merge error), so
+`_parse_v3` prefers the word-level `text_word` / `text_word_region` pair (whitespace
+tokens dropped; the only score is per line, shared across its words) and falls back to
+line-level `rec_texts` / `rec_polys` when absent. `enable_mkldnn=False` at the
+constructor avoids the paddlepaddle 3.x CPU oneDNN PIR crash (global FLAGS do not reach
+the paddlex predictor).
+
 ### 5.12 `assign_words_to_cells()` matching rule
 
-Center-in-cell -> max IoU fallback -> unassigned logging -> sort by y,x -> join.
+Center-in-cell -> max IoU fallback -> nearest row x nearest col (only within a
+conservative expanded-grid guard) -> otherwise unassigned -> sort by (y_center,
+x_center) -> join.
+
+The guard margin is `max(pct * extent, one median row-height / col-width)`, so a header
+or footer line sitting roughly one row above/below the grid is caught, while text two or
+more rows away (captions, unit labels, notes, page residue) stays unassigned. Words
+outside the GT grid by more than the guard are not forced into cells: Phase 1B measures
+whether content can be reconstructed inside the GT-structure grid, not whether every
+visible word in the crop lands in some cell. Unassigned/alignment coverage is reported
+separately (see 6.2).
+
+The final join is `join_word_tokens`, not a naive `" ".join`: word-level OCR emits
+punctuation and a number's digit groups as separate tokens, so a space-join yields dirty
+cell text ("Management ' s", "( Unaudited )", "13 , 223") that both reads badly in a
+Phase 1C RAG chunk and inflates the formatting gap against GT. Conservative rules - no
+space before closing punctuation / separators / `%` / apostrophe, no space after currency
+/ opening brackets, "' s" contracts, separator-split digit groups rejoined - produce clean
+`cell["text"]`. It never changes characters (a comma misread as a period, "29.2018", stays
+a visible mismatch, not whitewashed); the raw tokens remain in `cell["words"]`. Shared by
+gt_filled and ocr_filled so the comparison stays symmetric.
 
 ### 5.13 Numeric normalization (V9 fixes `looks_numeric()`)
 
@@ -421,11 +449,18 @@ produced in Phase 1B, not here.
 
 Topology (Phase 1A) -> Content (Phase 1B) -> End-to-end QA -> GriTS (Final/stretch).
 
+These are **transparent proxy metrics**, not a full benchmark. TEDS and GriTS
+(Top/Con/Loc) are the rigorous standard for table extraction and remain future work; the
+Phase 1B aggregate content metric (6.2) is a simplified stand-in for GriTS-Con. ocr_filled
+scores reflect the whole extraction chain (TATR topology + OCR recognition + word-to-cell
+assignment + reconstruction), so a low content score is not a pure OCR-accuracy number -
+hence the multi-view reporting in 6.2.
+
 ### 6.2 Proxy metrics
 
 **Topology:** row/col count accuracy, cell_occupancy_f1, spanning_cell_detection_rate (via `map_spanning_bbox_to_grid`), header_detection_accuracy, parse/html_success_rate, html_structure_match.
 
-**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1.
+**Content:** cell_text_exact_match, numeric_cell_relaxed_match (via `numeric_utils`), non_empty_cell_content_f1. Cells are aligned SPATIALLY, not by (row,col) index (TATR over/under-segmentation shifts indices, so index alignment compares physically different cells). Two modes are reported: **aggregate (primary)** - each GT cell gathers every pred cell whose center is inside it, joins their text in reading order, and compares, so a cell TATR split into several is recovered (reports mean_pred_cells_per_gt_cell, fragmented_gt_cells); **one-to-one** - each GT cell vs its single max-IoU pred cell (IoU >= threshold, default 0.5), which additionally penalises fragmentation (reports mean_alignment_iou). The gap between the two localises topology vs OCR loss. A **topology-matched subset** (samples whose row/col counts equal GT) is also reported to read OCR quality where topology is correct. exact/numeric are over matched GT cells only; alignment_coverage and word-assignment coverage (5.12) are reported so scores are not read as full-crop recall.
 
 **QA:** qa_exact_match, qa_numeric_relaxed_match (1%).
 
@@ -629,6 +664,10 @@ test_numeric_utils.py adds/fixes:
 > Table evaluation separates topology from content metrics. Cell bboxes are derived from row/column intersections; spanning cells are mapped back to grid coordinates via overlap-ratio thresholding. Grid geometry is validated for overlaps and degenerate cells. Phase 1A produces GT-filled and TATR-predicted tables as separate outputs.
 >
 > Financial number normalization requires at least one digit to trigger OCR character substitutions, preventing false positives on text like "Operating Income (Loss)". Dash-as-zero and percent-as-ratio conventions are configurable.
+>
+> Some FinTabNet crops contain visible text above or below the annotated table grid (header/footer/caption-like lines). Because the GT structure annotation does not include these words as table rows, Phase 1B does not force them into cells; they are tracked as unassigned words and excluded from cell-level content scoring. Content metrics are computed over aligned in-grid cells, and alignment/unassigned coverage is reported separately.
+>
+> Phase 1A/1B report transparent proxy metrics, not a full TEDS/GriTS benchmark. Content scores measure the whole extraction chain (topology + OCR + word-to-cell assignment), reported in three spatial views (strict one-to-one, aggregate content recovery, and a topology-matched subset) so they are not misread as pure OCR accuracy. Full GriTS/TEDS evaluation is future work.
 >
 > FUNSD V1 uses GT tokens/entities for relation-linking. RAG uses BM25+FAISS, RRF, rule-based routing, type-aware reranking, source grounding, numeric validation. HyDE, cross-encoder, LLM rewriting are future work.
 

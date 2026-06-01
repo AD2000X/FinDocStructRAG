@@ -8,10 +8,19 @@ everything here is unit-testable with synthetic boxes.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from .canonical_schema import CanonicalTable
 from .failure_logger import FailureLogger
+
+# Tokens that attach to the previous token (no space before): closing punctuation,
+# list/decimal separators, percent, colon/semicolon, and the apostrophe.
+_NO_SPACE_BEFORE = set(",.:;%)]}'")
+# Tokens after which no space is inserted: currency and opening brackets.
+_NO_SPACE_AFTER = set("$([{")
+# A digit, a separator, a digit split across tokens -> rejoin as one number.
+_NUM_SEP = re.compile(r"(\d)\s*([,.])\s*(\d)")
 
 
 def boxes_to_grid(
@@ -291,3 +300,196 @@ def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))
     return {"num_rows": len(rows), "num_cols": len(cols), "cells": cells}
+
+
+def _bbox_center(bbox: list[float]) -> tuple[float, float]:
+    return (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+
+
+def _point_in_bbox(point: tuple[float, float], bbox: list[float]) -> bool:
+    x, y = point
+    return bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]
+
+
+def _iou(a: list[float], b: list[float]) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0.0 else 0.0
+
+
+def _grid_bands(cells: list[dict]) -> tuple[dict, dict]:
+    """Per-row y-extent and per-col x-extent, read from single-span cells.
+
+    {row_index: (y1, y2)} and {col_index: (x1, x2)}. Spanning cells are skipped on the
+    axis they span so each band reflects one row / one column.
+    """
+    rows: dict[int, tuple[float, float]] = {}
+    cols: dict[int, tuple[float, float]] = {}
+    for c in cells:
+        x1, y1, x2, y2 = c["bbox"]
+        if c["row_end"] - c["row_start"] == 1:
+            rows[c["row_start"]] = (y1, y2)
+        if c["col_end"] - c["col_start"] == 1:
+            cols[c["col_start"]] = (x1, x2)
+    return rows, cols
+
+
+def _median(values: list[float]) -> float:
+    s = sorted(values)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
+def _expanded_grid_bbox(
+    cells: list[dict], row_bands: dict, col_bands: dict, pct: float
+) -> list[float]:
+    """Cell bounding box, expanded by a guard margin.
+
+    The margin is the larger of pct*extent and one median row-height / column-width, so
+    a header or footer line sitting roughly one row above/below the grid is caught
+    regardless of how tall the table is, while text two or more rows away is not.
+    """
+    x1 = min(c["bbox"][0] for c in cells)
+    y1 = min(c["bbox"][1] for c in cells)
+    x2 = max(c["bbox"][2] for c in cells)
+    y2 = max(c["bbox"][3] for c in cells)
+    row_h = _median([b2 - b1 for b1, b2 in row_bands.values()])
+    col_w = _median([b2 - b1 for b1, b2 in col_bands.values()])
+    mx = max((x2 - x1) * pct, col_w)
+    my = max((y2 - y1) * pct, row_h)
+    return [x1 - mx, y1 - my, x2 + mx, y2 + my]
+
+
+def _best_band(lo: float, hi: float, bands: dict) -> Optional[int]:
+    """Index of the band with the most 1-D overlap with [lo, hi]; if none overlaps,
+    the band whose center is nearest. None when there are no bands."""
+    if not bands:
+        return None
+    best_idx, best_overlap = None, 0.0
+    for idx, (b1, b2) in bands.items():
+        overlap = max(0.0, min(hi, b2) - max(lo, b1))
+        if overlap > best_overlap:
+            best_overlap, best_idx = overlap, idx
+    if best_idx is not None:
+        return best_idx
+    center = (lo + hi) / 2.0
+    return min(bands, key=lambda i: abs(center - (bands[i][0] + bands[i][1]) / 2.0))
+
+
+def _cell_at(cells: list[dict], row: int, col: int) -> Optional[dict]:
+    """The cell covering grid position (row, col), including a spanning cell."""
+    for cell in cells:
+        if (cell["row_start"] <= row < cell["row_end"]
+                and cell["col_start"] <= col < cell["col_end"]):
+            return cell
+    return None
+
+
+def assign_words_to_cells(
+    cells: list[dict],
+    words: list[dict],
+    logger: Optional[FailureLogger] = None,
+    sample_id: str = "unknown",
+    grid_margin: float = 0.05,
+) -> list[dict]:
+    """Assign OCR/GT words to derived cells (DESIGN_SPEC §5.5, Phase 1B).
+
+    For each word (a dict with "bbox" [x1,y1,x2,y2] and "text"):
+      1. if its center is inside a cell, assign there;
+      2. else if it overlaps a cell, assign to the max-IoU cell;
+      3. else, only if its center is inside the table grid bbox expanded by grid_margin,
+         snap it to the cell at (nearest/most-overlapping row x nearest/most-overlapping
+         column) - this catches words just outside the grid edges (e.g. a header line
+         above row 0) without pulling in far-off footnotes / page numbers.
+    A word that clears none of these is left unassigned and logged ("word_assignment").
+    Each cell's words are then sorted by (y_center, x_center) and joined into
+    cell["text"]. Mutates and returns cells.
+    """
+    for cell in cells:
+        cell.setdefault("words", [])
+
+    grid_cells = [c for c in cells if "bbox" in c]
+    row_bands, col_bands = _grid_bands(grid_cells)
+    expanded = (
+        _expanded_grid_bbox(grid_cells, row_bands, col_bands, grid_margin)
+        if grid_cells else None
+    )
+
+    for word in words:
+        wb = word["bbox"]
+        center = _bbox_center(wb)
+        target = None
+
+        for cell in grid_cells:
+            if _point_in_bbox(center, cell["bbox"]):
+                target = cell
+                break
+
+        if target is None:
+            best_iou = 0.0
+            for cell in grid_cells:
+                iou = _iou(wb, cell["bbox"])
+                if iou > best_iou:
+                    best_iou, target = iou, cell
+
+        if target is None and expanded is not None and _point_in_bbox(center, expanded):
+            row = _best_band(wb[1], wb[3], row_bands)
+            col = _best_band(wb[0], wb[2], col_bands)
+            if row is not None and col is not None:
+                target = _cell_at(grid_cells, row, col)
+
+        if target is None:
+            if logger is not None:
+                logger.log(sample_id, "ocr_assign", "word_assignment",
+                           word.get("text", ""))
+            continue
+        target["words"].append(word)
+
+    for cell in cells:
+        cell["words"].sort(key=lambda w: _bbox_center(w["bbox"])[::-1])
+        cell["text"] = join_word_tokens(
+            w.get("text", "") for w in cell["words"]
+        )
+    return cells
+
+
+def join_word_tokens(tokens) -> str:
+    """Join OCR/GT word tokens into clean cell text with conservative spacing.
+
+    Word-level OCR (return_word_box=True) emits punctuation and a number's digit groups
+    as separate tokens, so a naive space-join yields dirty text like "Management ' s",
+    "( Unaudited )", "13 , 223", "7.50 %" - which both reads badly in a RAG chunk and
+    inflates the formatting gap against GT. The rules below put no space before closing
+    punctuation / separators / "%" / apostrophe, and no space after currency / opening
+    brackets; an apostrophe followed by a short suffix ("' s") contracts. A final pass
+    rejoins digit groups split only by a separator ("13 , 223" -> "13,223").
+
+    What it does NOT do: change characters. A comma OCR'd as a period ("29 . 2018") stays
+    a period, so a genuine misread is still visible as a mismatch and not whitewashed. The
+    raw tokens remain in cell["words"] for traceability.
+    """
+    out = ""
+    prev = ""
+    for tok in tokens:
+        if not tok:
+            continue
+        if not out:
+            out, prev = tok, tok
+            continue
+        no_space = (
+            tok[0] in _NO_SPACE_BEFORE
+            or prev[-1] in _NO_SPACE_AFTER
+            or (prev[-1] == "'" and len(tok) <= 2 and tok.isalpha())
+        )
+        out += tok if no_space else " " + tok
+        prev = tok
+    return _NUM_SEP.sub(r"\1\2\3", out).strip()

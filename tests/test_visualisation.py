@@ -93,6 +93,20 @@ def test_grid_draws_on_same_size_copy():
         assert out is not img  # drew on a copy
 
 
+def test_ocr_debug_overlay_draws_all_layers_and_legend():
+    Image = pytest.importorskip("PIL.Image")
+    img = Image.new("RGB", (120, 60), "white")
+    gt = {"cells": [{"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+                     "bbox": [0, 0, 60, 60]}]}
+    ocr = {"cells": [{"row_start": 0, "row_end": 1, "col_start": 0, "col_end": 1,
+                      "bbox": [0, 0, 60, 60],
+                      "words": [{"text": "x", "bbox": [5, 5, 30, 25]}]}]}
+    out = vis.draw_ocr_debug_overlay(img, gt, ocr)
+    assert out.width == 120
+    assert out.height > 60  # legend strip appended
+    assert out is not img
+
+
 def test_overlay_legend_appends_strip_only_for_drawn_classes():
     Image = pytest.importorskip("PIL.Image")
     img = Image.new("RGB", (120, 60), "white")

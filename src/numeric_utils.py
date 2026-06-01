@@ -3,10 +3,21 @@
 V9 fix: looks_numeric() requires at least one digit (or a pure dash) before OCR
 character substitutions (O->0, I->1) are applied, so text like "Operating Income
 (Loss)" is not mistaken for a number because of its parentheses.
+
+Phase 1B financial-cell handling: normalize_financial_number tolerates the formatting
+real FinTabNet cells carry - dot leaders ("Label . . . . 45,854"), a currency $ misread
+as a letter, a stray trailing letter - by extracting the single numeric token. A cell
+holding two or more numbers (e.g. two adjacent columns merged by a spatial error) is left
+unmatched on purpose, so those errors are not papered over.
 """
 
 import re
 from typing import Optional
+
+# Runs of 2+ dots (optionally space-separated): table leader dots, not a decimal point.
+_LEADER_DOTS = re.compile(r"(?:\.\s*){2,}")
+# A single number token: digits with optional thousands commas and a decimal part.
+_NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
 def looks_numeric(raw: str) -> bool:
@@ -20,14 +31,26 @@ def looks_numeric(raw: str) -> bool:
     return bool(re.search(r'\d', s))
 
 
+def normalize_cell_text(text: str) -> str:
+    """Normalize cell text for comparison: collapse whitespace and drop leader dots.
+
+    Leader dots (the dotted line linking a label to its value) are formatting, not
+    content, so a run of 2+ dots is removed and residual leading/trailing dots stripped.
+    A lone decimal point inside a number is one dot and is preserved.
+    """
+    s = " ".join((text or "").split())
+    s = _LEADER_DOTS.sub(" ", s)
+    s = s.strip(" .")
+    return " ".join(s.split())
+
+
 def normalize_financial_number(
     raw: str,
     dash_as_zero: bool = True,
     percent_as_ratio: bool = True
 ) -> Optional[float]:
     """
-    Normalize financial number string to float.
-    Returns None if not numeric.
+    Normalize a financial number string to float. Returns None if not a single number.
 
     dash_as_zero: dash -> 0.0 (True) or None (False)
     percent_as_ratio: 12.5% -> 0.125 (True) or 12.5 (False)
@@ -36,27 +59,32 @@ def normalize_financial_number(
         return None
 
     s = raw.strip()
-    s = re.sub(r'[$£€¥]', '', s).strip()
-
     if s in ('-', '–', '—', '- ', ' -'):
         return 0.0 if dash_as_zero else None
 
-    is_negative = False
-    if s.startswith('(') and s.endswith(')'):
-        is_negative = True
-        s = s[1:-1].strip()
+    # Drop dot-leader runs (decimals, a single dot between digits, are not matched).
+    s = _LEADER_DOTS.sub(' ', s)
 
-    is_percent = False
-    if s.endswith('%'):
-        is_percent = True
-        s = s[:-1].strip()
+    # Word-level OCR emits each number's groups as separate tokens, so a single value can
+    # arrive with spaces around the thousands comma / decimal point ("13 , 223"). Re-join
+    # digit groups split only by a separator so the single-token rule sees one number. A
+    # space that does NOT flank a separator (two columns merged: "2011 2010") is left
+    # intact, so genuine merge errors stay two tokens and are still rejected below.
+    s = re.sub(r'(\d)\s*([,.])\s*(\d)', r'\1\2\3', s)
 
-    # OCR substitutions — ONLY if string contains a digit
-    if looks_numeric(s):
-        s = s.replace('O', '0').replace('o', '0')
-        s = s.replace('l', '1').replace('I', '1')
+    # Require exactly one numeric token. Zero -> not a number; two or more -> likely two
+    # columns merged into one cell (a spatial extraction error), which we leave unmatched
+    # rather than silently pick one of.
+    if len(_NUMBER_TOKEN.findall(s)) != 1:
+        return None
 
-    s = s.replace(' ', '').replace(',', '')
+    is_negative = '(' in s and ')' in s
+    is_percent = '%' in s
+
+    # OCR substitutions are safe here: the cell is one number with at most stray markers
+    # (a misread $ -> S, a trailing letter), which the digit-only filter below removes.
+    s = s.replace('O', '0').replace('o', '0').replace('l', '1').replace('I', '1')
+    s = re.sub(r'[^0-9.\-]', '', s.replace(',', ''))
 
     try:
         value = float(s)
@@ -64,7 +92,7 @@ def normalize_financial_number(
         return None
 
     if is_negative:
-        value = -value
+        value = -abs(value)
     if is_percent and percent_as_ratio:
         value = value / 100.0
 

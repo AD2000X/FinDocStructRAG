@@ -11,6 +11,7 @@ strings are confirmed by scripts/inspect_fintabnet.py on the first real run.
 
 from __future__ import annotations
 
+import json
 import random
 import tarfile
 import xml.etree.ElementTree as ET
@@ -20,6 +21,10 @@ from . import config
 
 REPO_ID = "bsmock/FinTabNet.c"
 STRUCTURE_ARCHIVE = "FinTabNet.c-Structure.tar.gz"
+# Per-sample GT word tokens live alongside images, confirmed by inspect_fintabnet
+# --gt-text: FinTabNet.c-Structure/words/<stem>_words.json.
+STRUCTURE_SUBDIR = "FinTabNet.c-Structure"
+WORDS_SUFFIX = "_words.json"
 
 # Standard Table Transformer structure classes (PASCAL VOC <name> values).
 # Verified against the real archive on first run; adjust here if they differ.
@@ -130,3 +135,38 @@ def parse_structure_xml(xml_path: str | Path) -> dict:
         "projected_row_headers": grouped.get(CLS_PROJECTED_ROW_HEADER, []),
         "class_counts": class_counts,
     }
+
+
+def words_path_for(sample_id: str) -> Path:
+    """Path to a sample's GT word-token JSON (FinTabNet.c-Structure/words/...).
+
+    sample_id is the shared stem of the xml/jpg (e.g. "AAL_2002_page_41_table_1").
+    """
+    return structure_root() / STRUCTURE_SUBDIR / "words" / f"{sample_id}{WORDS_SUFFIX}"
+
+
+def image_path_for(sample_id: str) -> Path:
+    """Path to a sample's table crop (FinTabNet.c-Structure/images/<stem>.jpg)."""
+    return structure_root() / STRUCTURE_SUBDIR / "images" / f"{sample_id}.jpg"
+
+
+def parse_words_json(source: str | Path | list) -> list[dict]:
+    """FinTabNet.c per-sample words JSON -> word dicts for assign_words_to_cells().
+
+    Each GT record carries a bbox [x1,y1,x2,y2] in the crop's pixel coordinates (the
+    same space as the structure XML) and text. We keep only what assignment needs and
+    tag the source as GT (confidence 1.0). Accepts a path or an already-loaded list.
+    """
+    if isinstance(source, (str, Path)):
+        data = json.loads(Path(source).read_text(encoding="utf-8"))
+    else:
+        data = source
+    return [
+        {
+            "text": w.get("text", ""),
+            "bbox": [float(v) for v in w["bbox"]],
+            "confidence": 1.0,
+            "source": "gt",
+        }
+        for w in data
+    ]
