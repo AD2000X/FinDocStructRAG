@@ -54,10 +54,16 @@ TABLES_OCR_FILLED = OUTPUT_ROOT / "tables" / "ocr_filled"
 TABLES_FAILURES = OUTPUT_ROOT / "tables" / "failures"
 RAG_INDEX = OUTPUT_ROOT / "rag_index"
 CHUNKS = RAG_INDEX / "chunks"   # serialized table chunks per (text_source, serialization)
+QA_DIR = OUTPUT_ROOT / "qa"     # generated + merged QA sets (on Drive)
 EVALUATION = OUTPUT_ROOT / "evaluation"
 FAILURE_LOGS = OUTPUT_ROOT / "failure_logs"
 MANIFESTS = OUTPUT_ROOT / "manifests"
 FIGURES = OUTPUT_ROOT / "figures"
+
+# Hand-authored QA seed (committed in the repo, not on Drive): the manual + unanswerable
+# questions that the templated-from-GT generator cannot produce. Eval ground truth, so it
+# is version-controlled and travels with git pull.
+QA_MANUAL_SEED = ROOT / "qa" / "qa_manual_seed.jsonl"
 
 # Model IDs (DESIGN_SPEC §4.2, §7; PLAN §0).
 TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-fin"

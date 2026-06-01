@@ -12,6 +12,7 @@ from src.table_serialize import (
     serialize,
     serialize_linearized,
     serialize_markdown,
+    table_grid,
 )
 
 
@@ -114,3 +115,12 @@ def test_serialize_dispatch_and_unknown_mode():
 def test_empty_table_serializes_to_empty_string():
     assert serialize_markdown({"num_rows": 0, "num_cols": 0, "cells": []}) == ""
     assert serialize_linearized({"num_rows": 0, "num_cols": 0, "cells": []}) == ""
+
+
+def test_table_grid_exposes_headers_and_columns():
+    grid, n_rows, n_cols, header_rows, col_headers = table_grid(_financial_3x3())
+    assert (n_rows, n_cols) == (3, 3)
+    assert header_rows == [0]
+    assert col_headers == ["", "2018", "2017"]
+    # body cell covering (1, 1) is the Revenue/2018 value
+    assert grid[1][1]["text"] == "13,223"
