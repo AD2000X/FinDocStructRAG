@@ -152,6 +152,7 @@ def build_openrouter_complete(model_name: str | None = None, max_retries: int = 
                 resp = client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
+                    temperature=0,  # greedy decoding: keep the eval reproducible across runs
                 )
                 return resp.choices[0].message.content or ""
             except RateLimitError as e:
