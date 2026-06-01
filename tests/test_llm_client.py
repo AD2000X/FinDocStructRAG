@@ -1,6 +1,6 @@
 """LLM client tests (CPU, no API key) - Phase 1C.
 
-A fake completer exercises the full prompt-build -> parse path without Gemini (P3).
+A fake completer exercises the full prompt-build -> parse path without the LLM (P3).
 """
 
 import pytest

@@ -1,9 +1,9 @@
 """Phase 1C: table-only RAG QA evaluation (retrieval + LLM answer generation).
 
-Triggered from the notebook (needs the GPU embedding stack + a Gemini key):
-    GEMINI_API_KEY=... python scripts/evaluate_qa.py
+Triggered from the notebook (needs the GPU embedding stack + an OpenRouter key):
+    OPENROUTER_API_KEY=... python scripts/evaluate_qa.py
     # smoke-test the key cheaply first (3 LLM calls):
-    GEMINI_API_KEY=... python scripts/evaluate_qa.py --limit 3 --corpus gt_markdown
+    OPENROUTER_API_KEY=... python scripts/evaluate_qa.py --limit 3 --corpus gt_markdown
 
 For each corpus ({gt,ocr} x {markdown,linearized}) this retrieves with RRF (BM25 + dense
 fused - the method carried forward from the retrieval matrix), feeds the top-k chunks to the
@@ -66,9 +66,9 @@ def main() -> None:
 
     # Colab/API pieces, loaded once and reused across corpora.
     from src.dense_retrieval import DenseIndex, build_bge_embedder
-    from src.llm_client import build_gemini_complete
+    from src.llm_client import build_openrouter_complete
     embedder = build_bge_embedder()
-    complete = build_gemini_complete()
+    complete = build_openrouter_complete()
 
     report = {"num_questions": len(questions), "top_k": args.top_k, "configs": {}}
     for name in corpora:

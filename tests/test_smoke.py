@@ -29,7 +29,7 @@ def test_config_paths():
     assert isinstance(config.IN_COLAB, bool)
     # Locked decisions (PLAN §0).
     assert config.EMBEDDING_MODEL == "BAAI/bge-small-en-v1.5"
-    assert config.LLM_PROVIDER == "gemini"
+    assert config.LLM_PROVIDER == "openrouter"
 
 
 def test_failure_logger_init(tmp_path):

@@ -26,7 +26,7 @@ strong reason. Items marked "experiment" are decided by Phase results; items mar
 | Retrieval | BM25 + FAISS + RRF + type-aware reranking + rule-based routing | V9 §7 |
 | Reranking | heuristic / rule-based (cross-encoder is future work) | V9 §7 |
 | **Embedding model (FAISS dense)** | **`BAAI/bge-small-en-v1.5`** | This plan (V9 unspecified) |
-| **Answer-generation LLM** | **Gemini (single provider, abstracted and swappable via `src/llm_client.py`)** | This plan |
+| **Answer-generation LLM** | **OpenRouter (OpenAI-compatible gateway; default `openai/gpt-4o-mini`; single provider, swappable via `src/llm_client.py`)** | This plan |
 | Numeric normalization | `src/numeric_utils.py` (V9-fixed `looks_numeric`) | V9 §5.13 |
 | Eval tooling | pycocotools / ranx / seqeval / sklearn / GriTS (final) / custom proxy | V9 §8 |
 | Demo | Gradio | V9 |
@@ -178,7 +178,7 @@ complete V9 (not optional), they just do not block the first demonstrable build.
     -r requirements-dev.txt
     ```
     README says `pip install -r requirements.txt`; the Colab notebook uses `pip install -r requirements-colab.txt`.
-  - `requirements-core.txt` — local development: `pandas`, `bs4`, `numpy`, `lxml`, the LLM SDK (e.g. `google-generativeai`, pure API calls, no GPU dependency, runs locally too)
+  - `requirements-core.txt` — local development: `pandas`, `bs4`, `numpy`, `lxml`, the LLM SDK (`openai`, used for the OpenRouter gateway; pure API calls, no GPU dependency, runs locally too)
   - `requirements-colab.txt` — GPU: `torch`, `transformers`, `paddleocr`, `faiss`, `datasets`
   - `requirements-dev.txt` — tooling: `pytest`, `ruff`, `black`, `mypy` (optional)
 - `.gitignore` (excludes `data/`, `outputs/`, `*.pt`, the Drive mount point)
@@ -383,7 +383,7 @@ comparison**. Therefore:
 
 - **Retrieval has no LLM at any point**: BM25 + FAISS + RRF + type-aware reranking. HyDE / LLM rewriting / cross-encoder are future work.
 - **LLM is used only in answer generation**: after retrieving evidence, generate an answer from that evidence.
-- **The MVP wires up only one API LLM** (decided: Gemini), not several providers at once, to avoid an explosion in key management / prompt differences / response format / cost tracking / eval / debug complexity.
+- **The MVP wires up only one API LLM** (decided: OpenRouter, an OpenAI-compatible gateway; default model `openai/gpt-4o-mini`), not several providers at once, to avoid an explosion in key management / prompt differences / response format / cost tracking / eval / debug complexity. OpenRouter also lets the model be swapped without changing the SDK.
 - **Swappability comes from the wrapper (strict boundary)**: all provider differences (prompt templates, response parsing, retry, cost logging) are contained in `src/llm_client.py`, exposing only `generate_answer()` to the RAG pipeline; switching provider changes only `llm_client.py` + config `LLM_PROVIDER`, not the RAG pipeline.
 - **Eval must not touch the SDK**: RAG evaluation and prompt format **may only consume the provider-neutral `LLMAnswer`**, never the SDK's raw response object directly. This way switching provider requires no eval pipeline changes.
 
@@ -398,7 +398,8 @@ class LLMClient:
     def generate_answer(self, question: str, evidence: list[dict]) -> LLMAnswer: ...
 
 # config.py
-LLM_PROVIDER = "gemini"   # single source of truth switch; or "openai"
+LLM_PROVIDER = "openrouter"   # single source of truth switch (OpenAI-compatible gateway)
+LLM_MODEL = "openai/gpt-4o-mini"   # swap the model without touching the SDK
 ```
 
 Implementation details:

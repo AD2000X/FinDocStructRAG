@@ -5,10 +5,13 @@ table chunks. Retrieval never calls an LLM (P5). The eval consumes only the prov
 `LLMAnswer`, never the SDK response object, so the provider can be swapped without touching
 eval code.
 
-The prompt build and the response parse are pure and unit-tested; the Gemini call is a lazy,
-injectable `complete(prompt) -> str` so tests exercise the full path with a fake completer
-and no API key (P3). The model is instructed to ground its answer in the provided tables,
-cite the table ids it used, and abstain (set "abstained") when the answer is not present.
+The prompt build and the response parse are pure and unit-tested; the OpenRouter call is a
+lazy, injectable `complete(prompt) -> str` so tests exercise the full path with a fake
+completer and no API key (P3). The model is instructed to ground its answer in the provided
+tables, cite the table ids it used, and abstain (set "abstained") when the answer is absent.
+
+OpenRouter is an OpenAI-compatible gateway, so the provider SDK is `openai` pointed at
+OpenRouter's base URL; switching the underlying model is just config.LLM_MODEL (P5).
 """
 
 from __future__ import annotations
@@ -101,13 +104,13 @@ def parse_answer(raw: str, evidence_ids: list[str]) -> LLMAnswer:
 
 
 def generate_answer(question: str, evidence: list[dict], complete=None) -> LLMAnswer:
-    """Generate a grounded answer. complete(prompt) -> raw text; defaults to the Gemini call.
+    """Generate a grounded answer. complete(prompt) -> raw text; defaults to the OpenRouter call.
 
     Injecting complete keeps the model out of unit tests: a fake completer exercises the whole
     prompt-build -> parse path with no API key.
     """
     if complete is None:
-        complete = build_gemini_complete()
+        complete = build_openrouter_complete()
     prompt = build_prompt(question, evidence)
     raw = complete(prompt)
     return parse_answer(raw, [e["chunk_id"] for e in evidence])
@@ -125,30 +128,33 @@ def _retry_delay_seconds(error_text: str, attempt: int) -> float:
     return min(60.0, 5.0 * (2 ** attempt))
 
 
-def build_gemini_complete(model_name: str | None = None, max_retries: int = 6):
-    """Build the Gemini completer (Colab/API) -> callable prompt -> raw text. Lazy import.
+def build_openrouter_complete(model_name: str | None = None, max_retries: int = 6):
+    """Build the OpenRouter completer (API) -> callable prompt -> raw text. Lazy import.
 
-    Reads the key from GEMINI_API_KEY or GOOGLE_API_KEY, and the model from GEMINI_MODEL or
-    config.LLM_MODEL. google-generativeai is the single provider SDK (P5).
+    Reads the key from OPENROUTER_API_KEY and the model from OPENROUTER_MODEL or
+    config.LLM_MODEL. OpenRouter is an OpenAI-compatible gateway, so the `openai` SDK is
+    pointed at OpenRouter's base URL (the single provider, P5).
 
-    Retries on a rate-limit error (429 ResourceExhausted), waiting the server's suggested
-    delay, so a free-tier per-minute request cap throttles the run instead of crashing it.
+    Retries on a rate-limit error (429), waiting the server's suggested delay or capped
+    exponential backoff, so a per-minute request cap throttles the run instead of crashing it.
     """
-    import google.generativeai as genai
-    from google.api_core.exceptions import ResourceExhausted
+    from openai import OpenAI, RateLimitError
 
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
-        raise SystemExit("set GEMINI_API_KEY (or GOOGLE_API_KEY) for answer generation")
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel(model_name or os.environ.get("GEMINI_MODEL")
-                                  or config.LLM_MODEL)
+        raise SystemExit("set OPENROUTER_API_KEY for answer generation")
+    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
+    model = model_name or os.environ.get("OPENROUTER_MODEL") or config.LLM_MODEL
 
     def complete(prompt: str) -> str:
         for attempt in range(max_retries):
             try:
-                return model.generate_content(prompt).text or ""
-            except ResourceExhausted as e:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return resp.choices[0].message.content or ""
+            except RateLimitError as e:
                 if attempt == max_retries - 1:
                     raise
                 time.sleep(_retry_delay_seconds(str(e), attempt))
