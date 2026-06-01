@@ -13,6 +13,8 @@ from the GT annotation; a GT overlay, if ever added, must be labelled as annotat
 from __future__ import annotations
 
 import html as _html
+import math
+import textwrap
 
 # Raw-artifact class key -> RGB, for the TATR box overlay (#2).
 CLASS_COLORS = {
@@ -210,6 +212,205 @@ def topology_to_html(table) -> str:
         + "".join(rows_html)
         + "</table>"
     )
+
+
+def _load_font(size: int, *, bold: bool = False):
+    from PIL import ImageFont
+
+    candidates = (
+        ["DejaVuSans-Bold.ttf", "Arial Bold.ttf", "arialbd.ttf"]
+        if bold else ["DejaVuSans.ttf", "Arial.ttf", "arial.ttf"]
+    )
+    for name in candidates:
+        try:
+            return ImageFont.truetype(name, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _measure(draw, text: str, font) -> tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text or " ", font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _clean_cell_text(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _wrap_cell_text(draw, text: str, font, max_width: int) -> list[str]:
+    """Wrap text to fit a rendered table cell, splitting long tokens only if needed."""
+    text = _clean_cell_text(text)
+    if not text:
+        return [""]
+
+    lines: list[str] = []
+    for paragraph in text.splitlines() or [text]:
+        wrapped = textwrap.wrap(
+            paragraph,
+            width=max(8, len(paragraph)),
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        words = " ".join(wrapped).split()
+        line = ""
+        for word in words:
+            candidate = word if not line else f"{line} {word}"
+            if _measure(draw, candidate, font)[0] <= max_width:
+                line = candidate
+                continue
+            if line:
+                lines.append(line)
+            if _measure(draw, word, font)[0] <= max_width:
+                line = word
+                continue
+            chunk = ""
+            for ch in word:
+                candidate = chunk + ch
+                if not chunk or _measure(draw, candidate, font)[0] <= max_width:
+                    chunk = candidate
+                else:
+                    lines.append(chunk)
+                    chunk = ch
+            line = chunk
+        if line:
+            lines.append(line)
+    return lines or [""]
+
+
+def render_table_image(
+    table,
+    *,
+    title: str = "",
+    font_size: int = 14,
+    min_col_width: int = 90,
+    max_col_width: int = 260,
+    padding: int = 8,
+):
+    """Render a canonical table as a readable PNG image.
+
+    This is for notebook/manual-QA review. Unlike markdown, it preserves row/col spans
+    visually and wraps long labels so wide financial tables remain readable.
+    """
+    from PIL import Image, ImageDraw
+
+    n_rows = table.get("num_rows", 0)
+    n_cols = table.get("num_cols", 0)
+    if n_rows <= 0 or n_cols <= 0:
+        return Image.new("RGB", (600, 80), "white")
+
+    font = _load_font(font_size)
+    header_font = _load_font(font_size, bold=True)
+    title_font = _load_font(font_size + 2, bold=True)
+    scratch = Image.new("RGB", (1, 1), "white")
+    draw = ImageDraw.Draw(scratch)
+
+    cells = table.get("cells", [])
+    anchored = {(c["row_start"], c["col_start"]): c for c in cells}
+    covered: set[tuple[int, int]] = set()
+    for cell in cells:
+        for r in range(cell["row_start"], min(cell["row_end"], n_rows)):
+            for c in range(cell["col_start"], min(cell["col_end"], n_cols)):
+                covered.add((r, c))
+
+    col_widths = [min_col_width] * n_cols
+    for cell in cells:
+        cs = max(1, min(cell["col_end"], n_cols) - cell["col_start"])
+        cell_font = header_font if cell.get("is_header") else font
+        text = _clean_cell_text(cell.get("text", ""))
+        if not text:
+            continue
+        longest_word = max(text.split(), key=len, default="")
+        text_w = min(_measure(draw, text, cell_font)[0], max_col_width * cs)
+        word_w = _measure(draw, longest_word, cell_font)[0]
+        needed = min(max_col_width * cs, max(min_col_width * cs, text_w, word_w))
+        per_col = math.ceil((needed + 2 * padding) / cs)
+        for c in range(cell["col_start"], min(cell["col_end"], n_cols)):
+            col_widths[c] = min(max_col_width, max(col_widths[c], per_col))
+
+    line_h = max(_measure(draw, "Ag", font)[1], _measure(draw, "Ag", header_font)[1]) + 5
+    min_row_height = line_h + 2 * padding
+    row_heights = [min_row_height] * n_rows
+    rendered_lines = {}
+    required_heights = {}
+    for cell in cells:
+        rs = max(1, min(cell["row_end"], n_rows) - cell["row_start"])
+        cell_font = header_font if cell.get("is_header") else font
+        width = max(24, sum(col_widths[cell["col_start"]:min(cell["col_end"], n_cols)])
+                    - 2 * padding)
+        lines = _wrap_cell_text(draw, cell.get("text", ""), cell_font, width)
+        required = max(min_row_height, len(lines) * line_h + 2 * padding)
+        key = (cell["row_start"], cell["col_start"])
+        rendered_lines[key] = lines
+        required_heights[key] = required
+        if rs == 1:
+            row_heights[cell["row_start"]] = max(row_heights[cell["row_start"]], required)
+
+    for cell in cells:
+        rs = max(1, min(cell["row_end"], n_rows) - cell["row_start"])
+        if rs == 1:
+            continue
+        key = (cell["row_start"], cell["col_start"])
+        current = sum(row_heights[cell["row_start"]:min(cell["row_end"], n_rows)])
+        deficit = required_heights[key] - current
+        if deficit > 0:
+            extra = math.ceil(deficit / rs)
+            for r in range(cell["row_start"], min(cell["row_end"], n_rows)):
+                row_heights[r] += extra
+
+    margin = 18
+    title_h = 0
+    if title:
+        title_h = _measure(draw, title, title_font)[1] + 14
+    x_edges = [margin]
+    for width in col_widths:
+        x_edges.append(x_edges[-1] + width)
+    y_edges = [margin + title_h]
+    for height in row_heights:
+        y_edges.append(y_edges[-1] + height)
+
+    img = Image.new(
+        "RGB",
+        (x_edges[-1] + margin, y_edges[-1] + margin),
+        "white",
+    )
+    draw = ImageDraw.Draw(img)
+    if title:
+        draw.text((margin, margin), title, fill=(20, 20, 20), font=title_font)
+
+    border = (120, 120, 120)
+    header_bg = (232, 238, 246)
+    body_bg = (255, 255, 255)
+    missing_bg = (248, 248, 248)
+
+    for r in range(n_rows):
+        for c in range(n_cols):
+            if (r, c) in covered:
+                continue
+            draw.rectangle(
+                [x_edges[c], y_edges[r], x_edges[c + 1], y_edges[r + 1]],
+                fill=missing_bg,
+                outline=border,
+            )
+
+    for (r, c), cell in sorted(anchored.items()):
+        if r >= n_rows or c >= n_cols:
+            continue
+        x1, x2 = x_edges[c], x_edges[min(cell["col_end"], n_cols)]
+        y1, y2 = y_edges[r], y_edges[min(cell["row_end"], n_rows)]
+        is_header = bool(cell.get("is_header"))
+        draw.rectangle(
+            [x1, y1, x2, y2],
+            fill=header_bg if is_header else body_bg,
+            outline=border,
+        )
+        cell_font = header_font if is_header else font
+        y = y1 + padding
+        for line in rendered_lines.get((r, c), [""]):
+            draw.text((x1 + padding, y), line, fill=(20, 20, 20), font=cell_font)
+            y += line_h
+
+    return img
 
 
 def summary_to_html(summary, subset_note: str = "") -> str:
