@@ -290,15 +290,34 @@ def normalize_table_annotation(annotation: dict) -> CanonicalTable:
     return {"num_rows": num_rows, "num_cols": num_cols, "cells": cells}
 
 
+def _mark_column_headers(cells: list[dict], header_boxes: list[dict]) -> None:
+    """Set is_header on grid cells whose center falls inside a column-header box.
+
+    column_headers boxes span the header band across the table width, so a grid cell
+    centered inside one is a header cell. This is what serialization (column headers) and
+    QA generation rely on; without it every cell is is_header=False.
+    """
+    if not header_boxes:
+        return
+    for cell in cells:
+        if "bbox" not in cell:
+            continue
+        center = _bbox_center(cell["bbox"])
+        if any(_point_in_bbox(center, hb["bbox"]) for hb in header_boxes):
+            cell["is_header"] = True
+
+
 def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     """TATR prediction -> canonical schema (same shape as the GT path).
 
-    Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with
-    a "bbox" key. Header detection is added with the Colab metrics step.
+    Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with a
+    "bbox" key. When column_headers boxes are present (the GT structure XML and the TATR
+    raw artifact both carry them), the cells they cover are flagged is_header.
     """
     rows = sorted(prediction.get("row_boxes", []), key=lambda r: r["bbox"][1])
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))
+    _mark_column_headers(cells, prediction.get("column_headers", []))
     return {"num_rows": len(rows), "num_cols": len(cols), "cells": cells}
 
 

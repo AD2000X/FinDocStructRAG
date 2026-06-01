@@ -91,9 +91,14 @@ def main() -> None:
         encoding="utf-8")
 
     n_unans = sum(1 for r in manual if not r.get("is_answerable", True))
+    if manual:
+        seed_msg = f"manual seed    : {len(manual)} ({n_unans} unanswerable)"
+    elif config.QA_MANUAL_SEED.exists():
+        seed_msg = f"manual seed    : 0 ({config.QA_MANUAL_SEED} is empty - author it)"
+    else:
+        seed_msg = f"manual seed    : 0 ({config.QA_MANUAL_SEED} not found - author it)"
     print(f"templated      : {len(templated)} (from {len(per_table)} tables with questions)")
-    print(f"manual seed    : {len(manual)} ({n_unans} unanswerable)"
-          if manual else "manual seed    : 0 (config.QA_MANUAL_SEED not found - author it)")
+    print(seed_msg)
     print(f"qa_all total   : {len(templated) + len(manual)}")
     print(f"templated -> {templated_path}")
     print(f"qa_all    -> {all_path}")
