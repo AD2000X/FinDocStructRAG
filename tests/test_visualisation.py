@@ -93,6 +93,14 @@ def test_grid_draws_on_same_size_copy():
         assert out is not img  # drew on a copy
 
 
+def test_render_table_image_handles_spans_and_headers():
+    pytest.importorskip("PIL.Image")
+    out = vis.render_table_image(_table_2x2_with_span(), title="sample")
+    assert out.width > 100
+    assert out.height > 80
+    assert out.getbbox() is not None
+
+
 def test_ocr_debug_overlay_draws_all_layers_and_legend():
     Image = pytest.importorskip("PIL.Image")
     img = Image.new("RGB", (120, 60), "white")

@@ -16,9 +16,11 @@ from GT; the eval runs over the GT-filled and OCR-filled corpora separately (P4)
 
 1. Browse real tables you can read the true answer off:
    ```
-   !python scripts/preview_chunks.py --limit 15 --seed 7
+   %run scripts/preview_chunks.py --limit 25 --seed 7 --format image --display
    ```
-   It prints each table's `sample_id`, `chunk_id`, and a markdown rendering.
+   It displays each table as a PNG with its `sample_id` and `chunk_id`. If you run the
+   script with `!python` instead of `%run`, it still writes the PNG files and `index.html`
+   under `outputs/figures/phase1c_preview/`, but inline notebook display is unavailable.
 2. For ~10 harder questions and ~5-10 unanswerable ones, add one JSON object per line to
    `qa_manual_seed.jsonl`, using a real `sample_id` you just read.
 
@@ -47,5 +49,5 @@ Unanswerable (not present in the table):
 {"question_id":"uq_0001","question":"What was the operating margin?","gold_answer":"","answer_type":"unanswerable","sample_id":"IP_2012_page_114_table_2","relevant_chunk_ids":[],"source":"manual_unanswerable","is_answerable":false}
 ```
 
-Verify the answer against the markdown `preview_chunks.py` prints before committing a row -
-these are eval ground truth.
+Verify the answer against the `preview_chunks.py` image/table preview before committing a
+row - these are eval ground truth.
