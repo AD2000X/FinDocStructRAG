@@ -5,5 +5,6 @@ beautifulsoup4
 lxml
 # Used by src/visualisation.py to draw the Phase 1A deliverable figures (CPU only).
 Pillow
-# Answer-generation LLM SDK (single provider, see src/llm_client.py).
-google-generativeai
+# Answer-generation LLM SDK: OpenRouter is OpenAI-compatible (single provider, see
+# src/llm_client.py).
+openai

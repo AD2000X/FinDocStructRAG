@@ -491,9 +491,10 @@ Structure-aware chunking (text/table/KV/header routing). Table serialization exp
 
 Retrieval has no LLM at any point. The LLM is used **only** to generate an answer from
 retrieved evidence, behind the `src/llm_client.py` abstraction. The MVP wires up a single
-provider (**Gemini**); switching provider changes only `llm_client.py` + config
-`LLM_PROVIDER`, never the RAG pipeline. (Locked in [PLAN.md](PLAN.md) §4; V9 did not specify
-how the grounded answer is produced.)
+provider (**OpenRouter**, an OpenAI-compatible gateway; default model `openai/gpt-4o-mini`);
+switching the model is just config `LLM_MODEL`, and switching provider changes only
+`llm_client.py` + config `LLM_PROVIDER`, never the RAG pipeline. (Locked in [PLAN.md](PLAN.md)
+§4; V9 did not specify how the grounded answer is produced.)
 
 ```python
 # src/llm_client.py
@@ -510,7 +511,8 @@ class LLMClient:
     def generate_answer(self, question: str, evidence: list[dict]) -> LLMAnswer: ...
 
 # config.py
-LLM_PROVIDER = "gemini"   # single source of truth switch
+LLM_PROVIDER = "openrouter"   # single source of truth switch
+LLM_MODEL = "openai/gpt-4o-mini"
 ```
 
 Rules:

@@ -70,5 +70,8 @@ TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-f
 TATR_DETECTION_MODEL = "microsoft/table-transformer-detection"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
-# Answer-generation LLM (single provider, swappable via src/llm_client.py).
-LLM_PROVIDER = "gemini"
+# Answer-generation LLM (single provider, swappable via src/llm_client.py). OpenRouter is an
+# OpenAI-compatible gateway; the model id is overridable at runtime by the OPENROUTER_MODEL
+# env var, so it can be changed without a code change.
+LLM_PROVIDER = "openrouter"
+LLM_MODEL = "openai/gpt-4o-mini"
