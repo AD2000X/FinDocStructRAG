@@ -329,6 +329,49 @@ def _mark_column_headers(
             cell["is_header"] = True
 
 
+def _dedup_bands(boxes: list[dict], axis: int, overlap_threshold: float = 0.3) -> list[dict]:
+    """1-D NMS on row or col bands: drop an overlapping band, keeping the higher-score one.
+
+    Processes bands sorted by start coordinate. For each band, if it overlaps the previous
+    kept band by more than overlap_threshold * min(extent), the higher-score box wins.
+
+    axis=1: row bands (bbox[1], bbox[3])
+    axis=0: col bands (bbox[0], bbox[2])
+    """
+    if len(boxes) < 2:
+        return list(boxes)
+    i0, i1 = axis, axis + 2
+    sorted_boxes = sorted(boxes, key=lambda b: b["bbox"][i0])
+    kept: list[dict] = [sorted_boxes[0]]
+    for box in sorted_boxes[1:]:
+        lo, hi = box["bbox"][i0], box["bbox"][i1]
+        prev = kept[-1]
+        plo, phi = prev["bbox"][i0], prev["bbox"][i1]
+        overlap = max(0.0, min(hi, phi) - max(lo, plo))
+        smaller = min(hi - lo, phi - plo)
+        if smaller > 0 and overlap / smaller > overlap_threshold:
+            if box.get("score", 0.0) > prev.get("score", 0.0):
+                kept[-1] = box
+        else:
+            kept.append(box)
+    return kept
+
+
+def dedup_row_col_bands(prediction: dict, overlap_threshold: float = 0.3) -> dict:
+    """Return a copy of prediction with overlapping row/col bands removed.
+
+    Applies _dedup_bands to row_boxes (y-axis) and col_boxes (x-axis). Other keys
+    (spanning_cells, column_headers, …) are passed through unchanged.
+    """
+    return {
+        **prediction,
+        "row_boxes": _dedup_bands(prediction.get("row_boxes", []), axis=1,
+                                   overlap_threshold=overlap_threshold),
+        "col_boxes": _dedup_bands(prediction.get("col_boxes", []), axis=0,
+                                   overlap_threshold=overlap_threshold),
+    }
+
+
 def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     """TATR prediction -> canonical schema (same shape as the GT path).
 

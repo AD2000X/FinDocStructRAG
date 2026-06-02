@@ -8,6 +8,7 @@ from src.tatr_postprocess import (
     apply_spanning_cells,
     boxes_to_grid,
     can_convert_to_canonical,
+    dedup_row_col_bands,
     html_to_canonical,
     map_spanning_bbox_to_grid,
     normalize_tatr_prediction,
@@ -199,3 +200,101 @@ def test_gate_rejects_bad_cell_span():
     bad = {"cells": [{"row_start": 1, "row_end": 1, "col_start": 0, "col_end": 1}]}
     ok, reason = can_convert_to_canonical(bad)
     assert ok is False
+
+
+# --- dedup_row_col_bands ---
+
+
+def _b(lo, hi, score=0.9, axis=1):
+    """Make a synthetic band box. axis=1 -> row (y), axis=0 -> col (x)."""
+    if axis == 1:
+        return {"bbox": [0.0, float(lo), 30.0, float(hi)], "score": score}
+    return {"bbox": [float(lo), 0.0, float(hi), 30.0], "score": score}
+
+
+def test_dedup_no_overlap_keeps_all():
+    rows = [_b(0, 10), _b(15, 25), _b(30, 40)]
+    result = dedup_row_col_bands({"row_boxes": rows, "col_boxes": []})
+    assert len(result["row_boxes"]) == 3
+
+
+def test_dedup_overlap_keeps_higher_score():
+    # Row A [0,10] score=0.5 overlaps Row B [5,15] score=0.9 -> keep B
+    rows = [_b(0, 10, score=0.5), _b(5, 15, score=0.9)]
+    result = dedup_row_col_bands({"row_boxes": rows, "col_boxes": []})
+    kept = result["row_boxes"]
+    assert len(kept) == 1
+    assert kept[0]["score"] == 0.9
+
+
+def test_dedup_overlap_keeps_lower_start_when_score_wins():
+    # Row A [0,10] score=0.9 overlaps Row B [5,15] score=0.3 -> keep A
+    rows = [_b(0, 10, score=0.9), _b(5, 15, score=0.3)]
+    result = dedup_row_col_bands({"row_boxes": rows, "col_boxes": []})
+    kept = result["row_boxes"]
+    assert len(kept) == 1
+    assert kept[0]["score"] == 0.9
+
+
+def test_dedup_chain_three_overlapping():
+    # A [0,10] score=0.9, B [5,15] score=0.3, C [13,23] score=0.8
+    # A vs B: overlap=5, smaller=10, ratio=0.5 > 0.3 -> keep A (higher score)
+    # kept[-1]=A vs C: overlap=max(0,min(10,23)-max(0,13))=0 -> keep C
+    # Result: [A, C]
+    rows = [_b(0, 10, score=0.9), _b(5, 15, score=0.3), _b(13, 23, score=0.8)]
+    result = dedup_row_col_bands({"row_boxes": rows, "col_boxes": []})
+    assert len(result["row_boxes"]) == 2
+    scores = {r["score"] for r in result["row_boxes"]}
+    assert scores == {0.9, 0.8}
+
+
+def test_dedup_col_axis():
+    # Two overlapping col boxes (x-axis)
+    cols = [_b(0, 10, score=0.4, axis=0), _b(6, 16, score=0.7, axis=0)]
+    result = dedup_row_col_bands({"row_boxes": [], "col_boxes": cols})
+    kept = result["col_boxes"]
+    assert len(kept) == 1
+    assert kept[0]["score"] == 0.7
+
+
+def test_dedup_no_overlap_at_exact_threshold():
+    # overlap=3, smaller=10 -> ratio=0.3 (NOT > 0.3) -> keep both
+    rows = [_b(0, 10, score=0.9), _b(7, 17, score=0.8)]
+    result = dedup_row_col_bands({"row_boxes": rows, "col_boxes": []})
+    assert len(result["row_boxes"]) == 2
+
+
+def test_dedup_other_keys_passthrough():
+    pred = {
+        "row_boxes": [_b(0, 10)],
+        "col_boxes": [_b(0, 10, axis=0)],
+        "spanning_cells": [{"bbox": [0, 0, 10, 10]}],
+        "column_headers": [{"bbox": [0, 0, 30, 5]}],
+    }
+    result = dedup_row_col_bands(pred)
+    assert result["spanning_cells"] is pred["spanning_cells"]
+    assert result["column_headers"] is pred["column_headers"]
+
+
+def test_dedup_makes_previously_invalid_grid_valid():
+    # Two rows heavily overlapping -> validate fails before dedup, passes after
+    rows = [_b(0, 20, score=0.9), _b(5, 25, score=0.5)]
+    cols = [_b(0, 10, axis=0), _b(10, 20, axis=0), _b(20, 30, axis=0)]
+    pred = {"row_boxes": rows, "col_boxes": cols}
+
+    canonical_before = normalize_tatr_prediction(pred)
+    valid_before = validate_grid_geometry(
+        sorted(pred["row_boxes"], key=lambda r: r["bbox"][1]),
+        sorted(pred["col_boxes"], key=lambda c: c["bbox"][0]),
+        canonical_before["cells"],
+    )
+    assert not valid_before
+
+    deduped = dedup_row_col_bands(pred)
+    canonical_after = normalize_tatr_prediction(deduped)
+    valid_after = validate_grid_geometry(
+        sorted(deduped["row_boxes"], key=lambda r: r["bbox"][1]),
+        sorted(deduped["col_boxes"], key=lambda c: c["bbox"][0]),
+        canonical_after["cells"],
+    )
+    assert valid_after

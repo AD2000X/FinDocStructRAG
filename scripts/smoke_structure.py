@@ -20,7 +20,7 @@ import random
 import time
 
 from src import config
-from src.tatr_postprocess import normalize_tatr_prediction, validate_grid_geometry
+from src.tatr_postprocess import dedup_row_col_bands, normalize_tatr_prediction, validate_grid_geometry
 from src.tatr_raw import RAW_BOX_KEYS, RAW_LABEL_TO_KEY
 
 
@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
                    help="TATR detection threshold")
     p.add_argument("--out-dir", type=Path, default=None,
                    help="directory for smoke_structure.csv (default: config.LAYOUT_OUTPUT)")
+    p.add_argument("--dedup-bands", action="store_true",
+                   help="apply 1-D NMS to overlapping row/col bands before normalize")
     return p.parse_args()
 
 
@@ -107,6 +109,8 @@ def main() -> None:
                                    "score": float(score),
                                    "label": id2label[label_id]})
 
+        if args.dedup_bands:
+            pred = dedup_row_col_bands(pred)
         canonical = normalize_tatr_prediction(pred)
         rows_sorted = sorted(pred["row_boxes"], key=lambda r: r["bbox"][1])
         cols_sorted = sorted(pred["col_boxes"], key=lambda c: c["bbox"][0])
