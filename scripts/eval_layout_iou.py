@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n", type=int, default=20)
     p.add_argument("--out-dir", type=Path, default=None)
     p.add_argument("--primary-threshold", type=float, default=0.3)
-    p.add_argument("--table-threshold", type=float, default=0.5,
+    p.add_argument("--table-threshold", type=float, default=0.3,
                    help="active threshold used for fallback trigger and final crop")
     p.add_argument("--dedup-iou", type=float, default=0.5)
     p.add_argument("--require-table-gt", action="store_true",

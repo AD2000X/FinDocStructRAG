@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
                    help="output root (default: config.LAYOUT_OUTPUT)")
     p.add_argument("--primary-threshold", type=float, default=0.3,
                    help="score cutoff inside build_layout_detector")
-    p.add_argument("--table-threshold", type=float, default=0.5,
+    p.add_argument("--table-threshold", type=float, default=0.3,
                    help="score threshold for: fallback detector, fallback trigger, crop filter")
     p.add_argument("--dedup-iou", type=float, default=0.5)
     p.add_argument("--no-fallback", action="store_true",
