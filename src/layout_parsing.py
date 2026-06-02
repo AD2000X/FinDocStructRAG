@@ -75,6 +75,44 @@ class Region:
         object.__setattr__(self, "score", float(self.score))
 
 
+def detections_to_regions(
+    scores: Sequence[float],
+    labels: Sequence[int],
+    boxes: Sequence[Sequence[float]],
+    id2label: dict[int, str],
+    *,
+    source: str,
+) -> list[Region]:
+    """Convert raw detector output (post-processed lists) to a list of canonical Regions.
+
+    The detector adapter calls this after `post_process_object_detection`; the result is what
+    `detect_layout` / the rest of Phase 2 consumes. No torch here - inputs are plain lists/dicts
+    so the shared conversion is unit-tested locally without a model.
+
+    Fail-fast on length mismatch and on unknown label ids (a new detector with different classes
+    should be noticed immediately, not silently dropped).
+    """
+    if not (len(scores) == len(labels) == len(boxes)):
+        raise ValueError(
+            f"detections_to_regions: length mismatch - "
+            f"scores={len(scores)}, labels={len(labels)}, boxes={len(boxes)}"
+        )
+    regions = []
+    for score, label_id, box in zip(scores, labels, boxes):
+        if label_id not in id2label:
+            raise KeyError(
+                f"detections_to_regions: unknown label id {label_id!r} not in id2label "
+                f"(known ids: {sorted(id2label)})"
+            )
+        regions.append(Region(
+            label=normalize_label(id2label[label_id]),
+            score=float(score),
+            box=tuple(float(c) for c in box),  # type: ignore[arg-type]
+            source=source,
+        ))
+    return regions
+
+
 def detect_layout(
     image,
     detector: Callable[[object], Sequence[Region]],

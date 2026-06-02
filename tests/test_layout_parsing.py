@@ -7,12 +7,86 @@ from src.layout_parsing import (
     LAYOUT_LABEL_MAP,
     Region,
     detect_layout,
+    detections_to_regions,
     normalize_label,
 )
 
 
 def R(label, score, box, source="layout"):
     return Region(label=label, score=score, box=box, source=source)
+
+
+# Minimal id2label that mirrors the Aryn detector contract (verified in smoke)
+_ARYN_ID2LABEL = {
+    0: "N/A", 1: "Caption", 2: "Footnote", 3: "Formula",
+    4: "List-item", 5: "Page-footer", 6: "Page-header", 7: "Picture",
+    8: "Section-header", 9: "Table", 10: "Text", 11: "Title",
+}
+
+
+# --- detections_to_regions ---
+
+
+def test_detections_to_regions_basic():
+    regions = detections_to_regions(
+        scores=[0.9, 0.7],
+        labels=[9, 10],
+        boxes=[[1, 2, 3, 4], [5, 6, 7, 8]],
+        id2label=_ARYN_ID2LABEL,
+        source="layout",
+    )
+    assert len(regions) == 2
+    assert regions[0].label == "table"
+    assert regions[0].score == 0.9
+    assert regions[0].box == (1.0, 2.0, 3.0, 4.0)
+    assert regions[0].source == "layout"
+    assert regions[1].label == "text"
+
+
+def test_detections_to_regions_coerces_to_float():
+    regions = detections_to_regions(
+        scores=[1], labels=[9], boxes=[[10, 20, 30, 40]],
+        id2label=_ARYN_ID2LABEL, source="layout",
+    )
+    assert all(isinstance(c, float) for c in regions[0].box)
+    assert isinstance(regions[0].score, float)
+
+
+def test_detections_to_regions_unknown_id_fails_fast():
+    with pytest.raises(KeyError, match="unknown label id"):
+        detections_to_regions(
+            scores=[0.9], labels=[99], boxes=[[0, 0, 1, 1]],
+            id2label=_ARYN_ID2LABEL, source="layout",
+        )
+
+
+def test_detections_to_regions_length_mismatch_fails_fast():
+    with pytest.raises(ValueError, match="length mismatch"):
+        detections_to_regions(
+            scores=[0.9, 0.8], labels=[9], boxes=[[0, 0, 1, 1]],
+            id2label=_ARYN_ID2LABEL, source="layout",
+        )
+
+
+def test_detections_to_regions_source_preserved():
+    regions = detections_to_regions(
+        scores=[0.8], labels=[9], boxes=[[0, 0, 1, 1]],
+        id2label=_ARYN_ID2LABEL, source="table_fallback",
+    )
+    assert regions[0].source == "table_fallback"
+
+
+def test_detections_to_regions_normalizes_label_via_map():
+    # id2label[9] == "Table" -> normalize_label -> "table"
+    regions = detections_to_regions(
+        scores=[0.85], labels=[9], boxes=[[0, 0, 1, 1]],
+        id2label=_ARYN_ID2LABEL, source="layout",
+    )
+    assert regions[0].label == "table"
+
+
+def test_detections_to_regions_empty_input_returns_empty():
+    assert detections_to_regions([], [], [], id2label=_ARYN_ID2LABEL, source="layout") == []
 
 
 # --- normalize_label / LAYOUT_LABEL_MAP ---
