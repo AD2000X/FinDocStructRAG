@@ -61,8 +61,9 @@ def _gt_table_boxes(ex: dict, img_w: int, img_h: int) -> list[tuple]:
 
     DocLayNet uses COCO-format annotations: bbox is [x, y, w, h] in pixel
     coordinates for 1025x1025 pages. category_id 9 == Table (verified in smoke).
+    Key may be 'bboxes' or 'bbox' depending on HF dataset version.
     """
-    bboxes = ex.get("bbox", [])
+    bboxes = ex.get("bboxes", ex.get("bbox", []))
     cats = ex.get("category_id", [])
     boxes = []
     for cat, bbox in zip(cats, bboxes):
@@ -135,6 +136,8 @@ def main() -> None:
     rows: list[_Row] = []
 
     for i, (orig_idx, ex) in enumerate(zip(indices, subset)):
+        if i == 0:
+            print(f"[diag] example keys: {list(ex.keys())}")
         page_id = f"val_{orig_idx:06d}"
         print(f"[{i + 1:3d}/{len(indices)}] {page_id}", end="  ", flush=True)
 
