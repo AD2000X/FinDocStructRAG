@@ -527,7 +527,7 @@ Rules:
 
 | Module | Approach |
 |--------|----------|
-| Layout AP/IoU | pycocotools |
+| Layout IoU | custom IoU diagnostics + greedy table-level matching; pycocotools optional |
 | Table MVP | custom proxy (spanning via `map_spanning_bbox_to_grid`) |
 | Table Final | GriTS |
 | FUNSD relation V1 | custom + sklearn |
@@ -572,7 +572,8 @@ PaddleOCR -> OCRWord -> `assign_words_to_cells()` -> `numeric_utils` (V9 `looks_
 Table-only RAG QA: build table chunks -> BM25 + dense (exact BGE cosine, `BAAI/bge-small-en-v1.5`; FAISS optional if the corpus grows) + RRF -> Markdown vs linearized serialization experiment (resolved: linearized carries forward) -> source-grounded QA via `src/llm_client.py` -> report GT-filled QA vs OCR-filled QA separately. This is the v1 release (see PLAN.md §2).
 
 ### Phase 2 (~1-1.5 weeks)
-bbox_utils + label mapping -> DocLayNet -> sequential + fallback.
+bbox_utils + label mapping -> HF DocLayNet detector -> table crops -> existing TATR
+structure handoff. Evaluate on fixed DocLayNet subsets with custom IoU/table-level matching.
 
 ### Phase 3 (~1 week)
 FUNSD spatial heuristic + boosts -> relation P/R/F1.
@@ -679,8 +680,9 @@ test_numeric_utils.py adds/fixes:
 
 > Scope note: these bullets describe the **full-project target** (Phases 1-4). As of now,
 > Phases 0-1C are delivered and merged (FinTabNet.c table topology, OCR content extraction,
-> and table-only RAG QA = v1). DocLayNet layout (Phase 2) and FUNSD relations (Phase 3) are
-> planned / in progress, not yet built — describe current state with the delivered scope.
+> and table-only RAG QA = v1). DocLayNet layout (Phase 2) is active on the Phase 2 branch
+> with the layout-crop MVP gate implemented/evaluated; FUNSD relations (Phase 3) are still
+> planned. Describe current state with the delivered scope.
 
 **Short version:**
 

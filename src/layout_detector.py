@@ -24,7 +24,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from . import config
-from .layout_parsing import Region, detections_to_regions
+from .layout_parsing import DEFAULT_TABLE_SCORE, Region, detections_to_regions
 
 if TYPE_CHECKING:
     from PIL.Image import Image
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 def build_layout_detector(
     model_id: str = config.LAYOUT_MODEL,
-    threshold: float = 0.5,
+    threshold: float = DEFAULT_TABLE_SCORE,
     device: str | None = None,
 ) -> Callable[["Image"], list[Region]]:
     """Load the Aryn DocLayNet detector and return a detector callable.

@@ -13,7 +13,7 @@ Manifest columns:
   page_id, status (processed/failed), num_regions, num_tables,
   num_cropped, fallback_used, error
 
-Fixed seeds (PLAN §0): debug=7 (n=20), mvp=42 (n=200).
+Fixed seeds (PLAN section 0): debug=7 (n=20), mvp=42 (n=200).
 Not tested in ordinary pytest (requires DocLayNet download + GPU).
 """
 from __future__ import annotations
@@ -34,6 +34,8 @@ import time
 import traceback
 from pathlib import Path
 
+from src.layout_parsing import DEFAULT_TABLE_DEDUP_IOU, DEFAULT_TABLE_SCORE
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Phase 2 layout batch runner")
@@ -43,11 +45,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n", type=int, default=20, help="number of pages to process")
     p.add_argument("--out-dir", type=Path, default=None,
                    help="output root (default: config.LAYOUT_OUTPUT)")
-    p.add_argument("--primary-threshold", type=float, default=0.3,
+    p.add_argument("--primary-threshold", type=float, default=DEFAULT_TABLE_SCORE,
                    help="score cutoff inside build_layout_detector")
-    p.add_argument("--table-threshold", type=float, default=0.3,
+    p.add_argument("--table-threshold", type=float, default=DEFAULT_TABLE_SCORE,
                    help="score threshold for: fallback detector, fallback trigger, crop filter")
-    p.add_argument("--dedup-iou", type=float, default=0.7)
+    p.add_argument("--dedup-iou", type=float, default=DEFAULT_TABLE_DEDUP_IOU)
     p.add_argument("--no-fallback", action="store_true",
                    help="disable TATR fallback (primary only)")
     p.add_argument("--require-table-gt", action="store_true",

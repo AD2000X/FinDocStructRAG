@@ -20,6 +20,5 @@ venv/
 tmp/
 memory/
 
-# Local-only engineering journal + scratch screenshots (never committed)
-DEVLOG.md
+# Scratch screenshots (never committed)
 output*.png

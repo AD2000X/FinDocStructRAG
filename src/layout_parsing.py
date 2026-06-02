@@ -2,15 +2,16 @@
 
 The page detector and the table-transformer-detection fallback emit raw label strings in their
 own vocabularies; this module reconciles them to one canonical lowercase vocabulary
-(`normalize_label` / `LAYOUT_LABEL_MAP`, DESIGN_SPEC §9), wraps detections in a provider-neutral
-`Region`, and runs the sequential-first + low-confidence-fallback selection (DESIGN_SPEC §4.1).
+(`normalize_label` / `LAYOUT_LABEL_MAP`, DESIGN_SPEC section 9), wraps detections in a
+provider-neutral `Region`, and runs the sequential-first + low-confidence-fallback selection
+(DESIGN_SPEC section 4.1).
 
 The model lives behind an injected `detector(image) -> list[Region]` callable (the
 `llm_client.complete` pattern), so the whole page->regions path is unit-tested with fake
 detectors and this module imports no transformers / torch. The real Aryn primary adapter is in
 `layout_detector.py`; the table-transformer-detection fallback adapter is in `table_detection.py`.
 
-NOTE: `detect_layout` returns candidate regions — including primary tables whose score was below
+NOTE: `detect_layout` returns candidate regions, including primary tables whose score was below
 `min_table_score` (they triggered the fallback but were not removed). Callers that crop must
 apply their own `score >= threshold` filter; see `layout_detector.py` and `table_detection.py`.
 """
@@ -127,12 +128,13 @@ def detect_layout(
     min_table_score: float = DEFAULT_TABLE_SCORE,
     dedup_iou: float = DEFAULT_TABLE_DEDUP_IOU,
 ) -> list[Region]:
-    """Sequential-first layout detection with a low-confidence table fallback (DESIGN_SPEC §4.1).
+    """Sequential-first layout detection with a low-confidence table fallback.
 
     Run the primary detector. If it produced at least one table but none scored >= `min_table_score`,
-    run the fallback detector and merge in ITS table regions only (the fallback has no non-table
-    class semantics). If primary detected zero tables entirely, fallback is skipped — TATR produces
-    too many false positives on table-free pages to be useful in that case. Overlapping table regions are deduped by IoU - highest score wins, deterministic
+    run the fallback detector and merge in its table regions only (the fallback has no non-table
+    class semantics). If primary detected zero tables entirely, fallback is skipped because TATR
+    produces too many false positives on table-free pages to be useful in that case.
+    Overlapping table regions are deduped by IoU - highest score wins, deterministic
     tie-break - and dedup is applied ONLY among table regions, so a fallback table never suppresses
     a primary text/figure and vice versa. Returns every region (all classes), table-deduped, so
     AP/IoU can use the full layout and the crop step just filters `label == "table"`.

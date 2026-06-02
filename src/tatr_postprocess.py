@@ -366,7 +366,7 @@ def dedup_row_col_bands(prediction: dict, overlap_threshold: float = 0.3) -> dic
     """Return a copy of prediction with overlapping row/col bands removed.
 
     Applies _dedup_bands to row_boxes (y-axis) and col_boxes (x-axis). Other keys
-    (spanning_cells, column_headers, …) are passed through unchanged.
+    (spanning_cells, column_headers, etc.) are passed through unchanged.
     """
     return {
         **prediction,
