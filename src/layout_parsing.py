@@ -7,8 +7,12 @@ own vocabularies; this module reconciles them to one canonical lowercase vocabul
 
 The model lives behind an injected `detector(image) -> list[Region]` callable (the
 `llm_client.complete` pattern), so the whole page->regions path is unit-tested with fake
-detectors and this module imports no transformers / torch. The real Aryn adapter and the
-table-transformer fallback adapter are in `table_detection.py`.
+detectors and this module imports no transformers / torch. The real Aryn primary adapter is in
+`layout_detector.py`; the table-transformer-detection fallback adapter is in `table_detection.py`.
+
+NOTE: `detect_layout` returns candidate regions — including primary tables whose score was below
+`min_table_score` (they triggered the fallback but were not removed). Callers that crop must
+apply their own `score >= threshold` filter; see `layout_detector.py` and `table_detection.py`.
 """
 
 from __future__ import annotations
