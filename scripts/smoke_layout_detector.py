@@ -81,6 +81,17 @@ def main() -> None:
     warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
     hf_logging.set_verbosity_error()
 
+    # Guard: transformers v5's meta-init loader does NOT load this checkpoint's timm resnet50
+    # backbone (config saved with 4.36.2) -> degenerate boxes. Make that loud, not silent.
+    import transformers
+
+    if int(transformers.__version__.split(".")[0]) >= 5:
+        print(
+            f"WARNING: transformers {transformers.__version__} (v5+) loads this checkpoint's timm "
+            "backbone incorrectly -> degenerate detections. Pin transformers==4.49.0 (see "
+            "notebooks/04_phase2_layout.ipynb) before trusting this result."
+        )
+
     # 1. Load processor + model.
     t0 = time.time()
     # use_fast=False: match the model card's (slow) preprocessing. The new fast default warns it
