@@ -71,6 +71,16 @@ def main() -> None:
     if device == "cpu":
         print("WARNING: no CUDA - this is a load/shape check only, NOT a T4 runtime measurement.")
 
+    # DETR-family timm backbones emit one "copying from a non-meta parameter ... no-op"
+    # UserWarning per backbone tensor on load - benign (transformers#37615), but hundreds of
+    # them bury the real smoke output. Silence just that class and quiet the HF load notices.
+    import warnings
+
+    from transformers.utils import logging as hf_logging
+
+    warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
+    hf_logging.set_verbosity_error()
+
     # 1. Load processor + model.
     t0 = time.time()
     processor = AutoImageProcessor.from_pretrained(args.model_id)
