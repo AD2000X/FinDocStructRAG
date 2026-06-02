@@ -241,6 +241,17 @@ def main() -> None:
                 for r in has_gt
             ]
             print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>14.3f}")
+
+    # False-positive report: only printed when all pages have no GT table
+    no_gt = [r for r in rows if r.gt_tables == 0]
+    if no_gt and len(no_gt) == len(rows):
+        fp_primary = sum(1 for r in no_gt if r.primary_tables > 0)
+        fp_fallback = sum(1 for r in no_gt if r.fallback_used)
+        fp_crop = sum(1 for r in no_gt if r.final_tables > 0)
+        print(f"\n── False-positive rate ({len(no_gt)} table-free pages) ──")
+        print(f"  primary detected table   : {fp_primary} / {len(no_gt)}")
+        print(f"  fallback triggered       : {fp_fallback} / {len(no_gt)}")
+        print(f"  final crop produced      : {fp_crop} / {len(no_gt)}")
     print(f"{'='*60}")
 
 
