@@ -45,9 +45,9 @@ def parse_args() -> argparse.Namespace:
                    help="output root (default: config.LAYOUT_OUTPUT)")
     p.add_argument("--primary-threshold", type=float, default=0.3,
                    help="score cutoff inside build_layout_detector")
-    p.add_argument("--table-threshold", type=float, default=0.5,
+    p.add_argument("--table-threshold", type=float, default=0.3,
                    help="score threshold for: fallback detector, fallback trigger, crop filter")
-    p.add_argument("--dedup-iou", type=float, default=0.5)
+    p.add_argument("--dedup-iou", type=float, default=0.7)
     p.add_argument("--no-fallback", action="store_true",
                    help="disable TATR fallback (primary only)")
     p.add_argument("--require-table-gt", action="store_true",
@@ -86,6 +86,11 @@ def main() -> None:
     crops_dir = out_dir / "crops"
     regions_dir.mkdir(parents=True, exist_ok=True)
     crops_dir.mkdir(parents=True, exist_ok=True)
+    stale = list(regions_dir.glob("*.json")) + list(crops_dir.glob("*.png"))
+    for f in stale:
+        f.unlink()
+    if stale:
+        print(f"[batch] cleared {len(stale)} stale artifact(s) from previous run")
 
     print("[batch] loading detectors ...")
     t0 = time.time()

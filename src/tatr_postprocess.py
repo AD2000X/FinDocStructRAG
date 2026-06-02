@@ -62,9 +62,9 @@ def validate_grid_geometry(
 ) -> bool:
     """Sanity-check a grid (DESIGN_SPEC §5.3).
 
-    Checks: negative dimensions, row/col sort order, adjacent overlap > 0.3, and
-    tiny cells (area < 100). Returns True when the grid is sane; failures are logged
-    if a FailureLogger is given.
+    Checks: missing row/column axes, negative dimensions, row/col sort order, adjacent
+    overlap > 0.3, and tiny cells (area < 100). Returns True when the grid is sane;
+    failures are logged if a FailureLogger is given.
     """
     ok = True
 
@@ -73,6 +73,11 @@ def validate_grid_geometry(
         ok = False
         if logger is not None:
             logger.log(sample_id, "phase1a", "grid_geometry", reason)
+
+    if not row_boxes:
+        fail("no row boxes detected")
+    if not col_boxes:
+        fail("no col boxes detected")
 
     for r in row_boxes:
         x1, y1, x2, y2 = r["bbox"]
@@ -329,13 +334,61 @@ def _mark_column_headers(
             cell["is_header"] = True
 
 
+def _dedup_bands(boxes: list[dict], axis: int, overlap_threshold: float = 0.3) -> list[dict]:
+    """1-D NMS on row or col bands: drop an overlapping band, keeping the higher-score one.
+
+    Processes bands sorted by start coordinate. For each band, if it overlaps the previous
+    kept band by more than overlap_threshold * min(extent), the higher-score box wins.
+
+    axis=1: row bands (bbox[1], bbox[3])
+    axis=0: col bands (bbox[0], bbox[2])
+    """
+    if len(boxes) < 2:
+        return list(boxes)
+    i0, i1 = axis, axis + 2
+    sorted_boxes = sorted(boxes, key=lambda b: b["bbox"][i0])
+    kept: list[dict] = [sorted_boxes[0]]
+    for box in sorted_boxes[1:]:
+        lo, hi = box["bbox"][i0], box["bbox"][i1]
+        prev = kept[-1]
+        plo, phi = prev["bbox"][i0], prev["bbox"][i1]
+        overlap = max(0.0, min(hi, phi) - max(lo, plo))
+        smaller = min(hi - lo, phi - plo)
+        if smaller > 0 and overlap / smaller > overlap_threshold:
+            if box.get("score", 0.0) > prev.get("score", 0.0):
+                kept[-1] = box
+        else:
+            kept.append(box)
+    return kept
+
+
+def dedup_row_col_bands(prediction: dict, overlap_threshold: float = 0.3) -> dict:
+    """Return a copy of prediction with overlapping row/col bands removed.
+
+    Applies _dedup_bands to row_boxes (y-axis) and col_boxes (x-axis). Other keys
+    (spanning_cells, column_headers, …) are passed through unchanged.
+    """
+    return {
+        **prediction,
+        "row_boxes": _dedup_bands(prediction.get("row_boxes", []), axis=1,
+                                   overlap_threshold=overlap_threshold),
+        "col_boxes": _dedup_bands(prediction.get("col_boxes", []), axis=0,
+                                   overlap_threshold=overlap_threshold),
+    }
+
+
 def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     """TATR prediction -> canonical schema (same shape as the GT path).
 
     Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with a
     "bbox" key. When column_headers boxes are present (the GT structure XML and the TATR
     raw artifact both carry them), the cells they cover are flagged is_header.
+
+    Overlapping row/col bands are deduped before grid construction so that the TATR
+    model's tendency to emit thin overlapping bands on dense non-financial crops does
+    not produce invalid grids.
     """
+    prediction = dedup_row_col_bands(prediction)
     rows = sorted(prediction.get("row_boxes", []), key=lambda r: r["bbox"][1])
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))
