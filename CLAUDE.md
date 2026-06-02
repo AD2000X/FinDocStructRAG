@@ -93,5 +93,5 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - `gt_filled/`, `tatr_predicted/`, `ocr_filled/` are strictly separated; topology / content metrics are reported separately.
 
 ## P5. Retrieval has no LLM; LLM is only for answer generation
-- Retrieval = BM25 + FAISS + RRF + type-aware reranking, no LLM at any point.
+- Retrieval = BM25 + dense BGE cosine + RRF + type-aware reranking, no LLM at any point (FAISS optional if the corpus grows).
 - LLM is used only in answer generation, through the `src/llm_client.py` abstraction (single provider); eval consumes only the provider-neutral `LLMAnswer`, never the SDK raw response.
