@@ -74,7 +74,7 @@ it pulled from GitHub into the Colab VM's `/content`. The two copies stay in syn
 
 ### Dual dev loops
 
-- **Local loop (CPU, seconds)**: pure-Python logic (`tatr_postprocess`, `numeric_utils`, `html_to_canonical`, `bbox_utils`, `chunking`) plus all of `tests/` -> local `pytest`, never touching Colab.
+- **Logic loop (CPU, seconds)**: pure-Python logic (`tatr_postprocess`, `numeric_utils`, `html_to_canonical`, `bbox_utils`, `layout_parsing`, `chunking`) plus all of `tests/` -> `pytest`, no GPU. The fast inner loop is local; it may also run on a connected Colab runtime (the boundary is model-free tests, not the machine — see §3 Phase 2-dev).
 - **Colab loop (GPU)**: GPU-bound inference (TATR, PaddleOCR, DocLayNet) and dense-embedding / index building -> notebook runs on the Colab kernel.
 
 ### Colab notebook role: runner, not source code
@@ -350,7 +350,13 @@ page image -> layout detector -> regions {Text, Title, Table, Figure, ...}
   -> IoU dedup -> each table crop -> EXISTING Phase 1A TATR + Phase 1B OCR (unchanged)
 ```
 
-#### Phase 2-local (CPU, pure logic, synthetic unit tests first — P3)
+#### Phase 2-dev on Colab T4 (pure logic first, synthetic unit tests — P3)
+
+Use the Colab T4 runtime as the Phase 2 development runtime if it is already connected; this
+keeps the dependency stack identical to the detector smoke and avoids Windows/Colab drift.
+The first implementation steps are still **pure logic**: unit tests use fake boxes / fake
+detector outputs and do not call the DocLayNet model. In other words, "pure logic first"
+describes the dependency boundary, not the physical machine.
 
 1. `src/bbox_utils.py` (§4.3, the first step): coordinate/format conversions (xyxy<->xywh,
    COCO<->pixel, DocLayNet normalized 0-1 <-> page pixels at a pinned render DPI),
@@ -365,7 +371,7 @@ page image -> layout detector -> regions {Text, Title, Table, Figure, ...}
    fallback-trigger rule (low confidence -> fallback fires; high confidence -> it does not),
    crop-coordinate correctness.
 
-#### Phase 2-colab (Colab T4, real detection)
+#### Phase 2-colab inference / eval (same T4 runtime, real detection)
 
 1. DocLayNet access via HF `datasets`: `unique("doc_category")` first, then filter (§2); fixed
    random subsets per §18.6 (debug seed 7 / mvp seed 42).
@@ -378,12 +384,13 @@ page image -> layout detector -> regions {Text, Title, Table, Figure, ...}
 
 #### New config / artifacts
 
-- `config.LAYOUT_MODEL` (id pinned after the T4 load check), DocLayNet paths, a pinned render DPI.
+- `config.LAYOUT_MODEL = "Aryn/deformable-detr-DocLayNet"`, DocLayNet paths, a pinned render DPI.
 - `outputs/layout/` (predicted regions + detected crops) and `outputs/manifests/phase2_layout_<run>.csv`
   per the §18 manifest convention; detected crops never mixed into the FinTabNet streams.
 
 **Acceptance criteria**
-- `bbox_utils`, `normalize_label`, and the sequential+fallback selection unit tests pass locally (P3).
+- `bbox_utils`, `normalize_label`, and the sequential+fallback selection unit tests pass in the
+  Colab T4 runtime without detector/model calls (and may also pass locally) (P3).
 - Layout AP/IoU reported on a fixed DocLayNet subset (`pycocotools`), with `processed / skipped /
   failed` + the subset descriptor (§18.6) — never phrased as a whole-dataset number.
 - End-to-end: a table crop detected from a full page runs through the existing Phase 1A TATR
@@ -532,16 +539,17 @@ Implementation details:
 
 **Phases 0 through 1C are complete and merged** (v1 = table-only RAG). The next track is
 **Phase 2 (DocLayNet layout integration)**; do not open a second track in parallel. The
-detector is decided (HF DETR-on-DocLayNet, see §3 Phase 2) but its model id is not yet pinned.
+detector smoke is complete and `config.LAYOUT_MODEL` is pinned to
+`Aryn/deformable-detr-DocLayNet` (see §3 Phase 2). Keep using the Colab T4 runtime for Phase
+2 development if it is already connected, but keep unit tests model-free until the inference
+step.
 Order:
 
-1. **Detector smoke (Colab T4)**: confirm the chosen HF DETR-on-DocLayNet model loads, runs on a
-   couple of DocLayNet pages, and exposes `config.id2label`; only then pin `config.LAYOUT_MODEL`.
-2. **Phase 2-local first** (CPU, synthetic unit tests, P3): `bbox_utils.py` (coordinate
-   conversions, IoU, crop-with-padding, dedup), `layout_parsing.py` (`LAYOUT_LABEL_MAP` +
+1. **Phase 2-dev first on T4, pure logic / synthetic unit tests (P3)**: `bbox_utils.py`
+   (coordinate conversions, IoU, crop-with-padding, dedup), `layout_parsing.py` (`LAYOUT_LABEL_MAP` +
    `normalize_label` + the sequential/fallback selection over an injected detector),
    `table_detection.py` (the `table-transformer-detection` fallback adapter).
-3. **Then Phase 2-colab**: run detection on a fixed DocLayNet subset, layout AP/IoU via
+2. **Then real T4 inference / eval**: run detection on a fixed DocLayNet subset, layout AP/IoU via
    `pycocotools`, and confirm a detected table crop feeds the existing Phase 1A topology pipeline.
 
 ---
