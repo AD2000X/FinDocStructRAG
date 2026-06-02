@@ -18,6 +18,13 @@ Not tested in ordinary pytest (requires DocLayNet download + GPU).
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Repo root onto sys.path so `from src import ...` works when this script is
+# invoked as `python scripts/run_layout_batch.py` from the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
 import csv
 import json
