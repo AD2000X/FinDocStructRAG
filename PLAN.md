@@ -36,7 +36,7 @@ strong reason. Items marked "experiment" are decided by Phase results; items mar
 - Table serialization: Markdown vs linearized -> **resolved in Phase 1C: linearized carries forward** (reproducible +0.10 numeric_relaxed over markdown on both the gt and ocr corpora, temperature=0)
 - RAG faithfulness (Ragas/DeepEval), LLM-as-Judge -> **optional** (V9 §7/§8)
 - HyDE / LLM rewriting / cross-encoder -> **future work** (V9 §7)
-- **Page-level layout detector model** (the model that produces DocLayNet-class regions) -> **pin before Phase 2 coding** (§3 Phase 2). DocLayNet is the dataset / AP-IoU target, not a model; the spec (§9) assumes a HF detector exposing `config.id2label`. Candidates and recommendation are in the Phase 2 section.
+- **Page-level layout detector model** -> **resolved (T4 smoke passed): `Aryn/deformable-detr-DocLayNet`** (`config.LAYOUT_MODEL`). HF Deformable DETR, `id2label[9] == "Table"`, xyxy pixel boxes, 41M params / ~1 GB VRAM / ~0.8 s per page on a T4. Requires `transformers<5` (4.49.0 verified) - v5's meta-init loader leaves the timm resnet50 backbone unloaded. Candidate comparison in the Phase 2 section.
 
 ---
 
@@ -331,6 +331,14 @@ scratch. Candidates:
 Recommendation: the **HF DETR-on-DocLayNet** path, to keep §9 literal and add no heavy
 dependency. The exact model id is pinned into `config.LAYOUT_MODEL` only after it is confirmed
 to load and run on a T4 (verify before locking, like the embedding model was).
+
+**Resolved (T4 smoke, `scripts/smoke_layout_detector.py`):** pinned
+`config.LAYOUT_MODEL = "Aryn/deformable-detr-DocLayNet"` - loads in ~3 s, ~1 GB VRAM,
+~0.8 s/page; `id2label[9] == "Table"`; boxes are xyxy pixel and crop cleanly (verified a
+0.907 Table box on a DocLayNet page). One gotcha baked into the env: the checkpoint was saved
+with transformers 4.36.2 and uses a timm resnet50 backbone, which transformers>=5's meta-init
+loader leaves unloaded (degenerate detections), so `requirements-colab.txt` pins
+`transformers==4.49.0` and the smoke warns on v5.
 
 #### Architecture (DESIGN_SPEC §4.1, sequential-first + fallback)
 

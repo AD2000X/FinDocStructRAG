@@ -1,6 +1,9 @@
 # Colab GPU dependencies (installed on the Colab VM, not locally on Windows).
 torch
-transformers
+# Pinned <5: the Phase 2 layout detector (Aryn/deformable-detr-DocLayNet, saved with 4.36.2,
+# timm resnet50 backbone) loads degenerately under transformers>=5's meta-init loader. 4.49.0
+# verified on Colab T4 (torch 2.11). Also fine for the Phase 1C sentence-transformers/BGE path.
+transformers==4.49.0
 timm
 # paddleocr 3.x is only the pipeline frontend; it needs the paddlepaddle engine to run.
 # CPU build: table crops are small, and it avoids paddlepaddle-gpu CUDA-version mismatches.

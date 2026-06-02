@@ -70,6 +70,12 @@ TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-f
 TATR_DETECTION_MODEL = "microsoft/table-transformer-detection"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 
+# Phase 2 page-level layout detector (DocLayNet classes; id2label[9] == "Table"). Verified on a
+# Colab T4 by scripts/smoke_layout_detector.py. NOTE: this checkpoint was saved with transformers
+# 4.36.2 and uses a timm resnet50 backbone; transformers>=5's meta-init loader leaves that backbone
+# unloaded (degenerate detections), so the Colab env pins transformers==4.49.0 (requirements-colab).
+LAYOUT_MODEL = "Aryn/deformable-detr-DocLayNet"
+
 # Answer-generation LLM (single provider, swappable via src/llm_client.py). OpenRouter is an
 # OpenAI-compatible gateway; the model id is overridable at runtime by the OPENROUTER_MODEL
 # env var, so it can be changed without a code change.
