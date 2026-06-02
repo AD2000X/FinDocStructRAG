@@ -1,8 +1,10 @@
 """Retrieval for table-only RAG (Phase 1C): BM25 + RRF (no LLM, P5).
 
 BM25 lexical scoring and Reciprocal Rank Fusion are pure CPU and unit-tested locally. The
-dense path (bge embeddings + FAISS) is a lazy Colab-only follow-up that slots in behind the
-same "query -> ranked chunk_ids" contract, and RRF fuses BM25 with it.
+dense path (bge embeddings, exact cosine) lives in `dense_retrieval.py` behind the same
+"query -> ranked chunk_ids" contract, and RRF fuses BM25 with it. Dense is exact brute-force
+cosine at the Phase 1C scale, not FAISS; FAISS slots behind the same interface only if a
+later (post-Phase-2) corpus makes brute force too slow.
 
 No LLM at any point in retrieval (P5): retrieval is BM25 + (dense) + RRF only.
 """
