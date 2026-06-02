@@ -163,13 +163,25 @@ def test_high_score_table_skips_fallback():
     assert [r.label for r in out] == ["table"]
 
 
-def test_no_table_triggers_fallback():
+def test_primary_finds_no_table_skips_fallback():
+    # Primary detected zero tables → fallback must NOT fire (TATR has high FP rate on table-free pages)
     primary = [R("text", 0.9, (0, 0, 10, 10))]
+
+    def fallback(img):
+        raise AssertionError("fallback must not run when primary found zero tables")
+
+    out = detect_layout(None, lambda img: primary, fallback, min_table_score=0.5)
+    assert [r.label for r in out] == ["text"]
+
+
+def test_low_score_table_present_triggers_fallback():
+    # Primary found a table but scored it below threshold → fallback SHOULD fire
+    primary = [R("text", 0.9, (0, 0, 10, 10)), R("table", 0.3, (1, 1, 9, 9))]
     fb = [R("table", 0.8, (1, 1, 9, 9), source="table_fallback")]
     out = detect_layout(None, lambda img: primary, lambda img: fb, min_table_score=0.5)
-    assert sorted(r.label for r in out) == ["table", "text"]
-    table = next(r for r in out if r.label == "table")
-    assert table.source == "table_fallback"
+    tables = [r for r in out if r.label == "table"]
+    assert len(tables) == 1  # primary table deduped by higher-score fallback
+    assert tables[0].source == "table_fallback"
 
 
 def test_low_score_table_triggers_fallback_and_higher_score_wins():
@@ -185,7 +197,8 @@ def test_low_score_table_triggers_fallback_and_higher_score_wins():
 
 
 def test_fallback_contributes_tables_only():
-    primary = [R("text", 0.9, (0, 0, 10, 10))]
+    # Primary has a low-score table (triggers fallback); fallback's non-table region must be dropped
+    primary = [R("text", 0.9, (0, 0, 10, 10)), R("table", 0.2, (1, 1, 9, 9))]
     fb = [
         R("table", 0.8, (1, 1, 9, 9), source="table_fallback"),
         R("picture", 0.95, (0, 0, 10, 10), source="table_fallback"),  # dropped: non-table
