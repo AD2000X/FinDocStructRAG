@@ -66,7 +66,7 @@ LAYOUT_OUTPUT = OUTPUT_ROOT / "layout"   # Phase 2: regions JSON + crop PNGs + m
 # is version-controlled and travels with git pull.
 QA_MANUAL_SEED = ROOT / "qa" / "qa_manual_seed.jsonl"
 
-# Model IDs (DESIGN_SPEC §4.2, §7; PLAN §0).
+# Model IDs (DESIGN_SPEC sections 4.2 and 7; PLAN section 0).
 TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-fin"
 TATR_DETECTION_MODEL = "microsoft/table-transformer-detection"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"

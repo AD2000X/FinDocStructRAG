@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke: Phase 2 crop → TATR structure recognition handoff check.
+"""Smoke: Phase 2 crop to TATR structure recognition handoff check.
 
 Picks up to --n crops from LAYOUT_OUTPUT/crops/ (Phase 2 output), runs each
 through the full structure pipeline (model inference + normalize + validate),
@@ -35,7 +35,7 @@ class _ReasonCollector:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Smoke: Phase 2 crops → TATR structure")
+    p = argparse.ArgumentParser(description="Smoke: Phase 2 crops to TATR structure")
     p.add_argument("--crops-dir", type=Path, default=None,
                    help="directory of crop PNGs (default: config.LAYOUT_OUTPUT/crops)")
     p.add_argument("--n", type=int, default=5, help="number of crops to test")

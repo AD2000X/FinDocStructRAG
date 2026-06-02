@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Phase 2 IoU diagnostic for the fixed debug subset (default seed=7, n=20).
+"""Phase 2 IoU diagnostic for fixed DocLayNet subsets.
 
-Answers three questions about the batch runner's 10/20 fallback rate:
-  Q1: Did primary miss the table entirely, or just score < threshold?
-  Q2: Is fallback IoU actually better than primary?
-  Q3: Is table_threshold=0.5 too strict?
+Answers three questions about the current layout-crop policy:
+  Q1: Did fallback fire because primary missed tables, or only because scores were low?
+  Q2: When fallback fires, is fallback IoU actually better than primary?
+  Q3: How sensitive are crop results to table_threshold?
 
 Strategy: re-run detection capturing primary-alone and fallback-alone results
 BEFORE the detect_layout merge/dedup, so primary IoU is not contaminated by
@@ -30,7 +30,12 @@ import time
 from typing import NamedTuple
 
 from src.bbox_utils import iou, xywh_to_xyxy
-from src.layout_parsing import TABLE_LABEL, Region
+from src.layout_parsing import (
+    DEFAULT_TABLE_DEDUP_IOU,
+    DEFAULT_TABLE_SCORE,
+    TABLE_LABEL,
+    Region,
+)
 
 
 class _Row(NamedTuple):
@@ -111,10 +116,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--n", type=int, default=20)
     p.add_argument("--out-dir", type=Path, default=None)
-    p.add_argument("--primary-threshold", type=float, default=0.3)
-    p.add_argument("--table-threshold", type=float, default=0.3,
+    p.add_argument("--primary-threshold", type=float, default=DEFAULT_TABLE_SCORE)
+    p.add_argument("--table-threshold", type=float, default=DEFAULT_TABLE_SCORE,
                    help="active threshold used for fallback trigger and final crop")
-    p.add_argument("--dedup-iou", type=float, default=0.7)
+    p.add_argument("--dedup-iou", type=float, default=DEFAULT_TABLE_DEDUP_IOU)
     p.add_argument("--require-table-gt", action="store_true",
                    help="only sample pages with GT Table annotations (category_id 9)")
     p.add_argument("--exclude-table-gt", action="store_true",
@@ -219,7 +224,7 @@ def main() -> None:
             f"  fb_used={row.fallback_used}  {elapsed:.2f}s"
         )
 
-    # Write CSV — mode-suffixed so positive/negative runs don't overwrite each other
+    # Write CSV with a mode suffix so positive/negative runs do not overwrite each other.
     mode_suffix = "_pos" if args.require_table_gt else ("_neg" if args.exclude_table_gt else "")
     diag_path = out_dir / f"diagnostic{mode_suffix}.csv"
     with diag_path.open("w", newline="") as f:
@@ -229,7 +234,7 @@ def main() -> None:
             w.writerow(r._asdict())
     print(f"\n[diag] wrote {diag_path}")
 
-    # ── Summary ──────────────────────────────────────────────────────────
+    # Summary
     has_gt = [r for r in rows if r.gt_tables > 0]
     fb_pages = [r for r in has_gt if r.fallback_used]
     print(f"\n{'='*60}")
@@ -240,21 +245,21 @@ def main() -> None:
     print(f"  mean best_iou_candidate : {_mean([r.best_iou_candidate for r in has_gt]):.3f}  (all detected tables)")
     print(f"  mean best_iou_crop      : {_mean([r.best_iou_crop      for r in has_gt]):.3f}  (score >= table_threshold)")
 
-    # Q1 ─ primary miss vs low score
-    print(f"\n── Q1: on {len(fb_pages)} fallback pages ──")
+    # Q1: primary miss vs low score
+    print(f"\n-- Q1: on {len(fb_pages)} fallback pages --")
     found = [r for r in fb_pages if r.primary_tables > 0]
     missed = [r for r in fb_pages if r.primary_tables == 0]
     print(f"  primary found table (but < thresh) : {len(found)}")
     if found:
         lo = min(r.primary_max_score for r in found)
         hi = max(r.primary_max_score for r in found)
-        print(f"    score range  : {lo:.2f} – {hi:.2f}")
+        print(f"    score range  : {lo:.2f} - {hi:.2f}")
         print(f"    mean primary IoU on these : {_mean([r.best_iou_primary for r in found]):.3f}")
     print(f"  primary completely missed table    : {len(missed)}")
 
-    # Q2 ─ fallback IoU vs primary IoU on fallback pages
+    # Q2: fallback IoU vs primary IoU on fallback pages
     if fb_pages:
-        print(f"\n── Q2: fallback vs primary IoU (on {len(fb_pages)} fallback pages) ──")
+        print(f"\n-- Q2: fallback vs primary IoU (on {len(fb_pages)} fallback pages) --")
         fb_better = [r for r in fb_pages if r.best_iou_fallback > r.best_iou_primary]
         prim_better = [r for r in fb_pages if r.best_iou_primary > r.best_iou_fallback]
         equal = [r for r in fb_pages if r.best_iou_fallback == r.best_iou_primary]
@@ -264,9 +269,9 @@ def main() -> None:
         print(f"  mean iou_fallback : {_mean([r.best_iou_fallback for r in fb_pages]):.3f}")
         print(f"  mean iou_primary  : {_mean([r.best_iou_primary  for r in fb_pages]):.3f}")
 
-    # Q3 ─ threshold sensitivity (simulate different table_threshold values)
+    # Q3: threshold sensitivity (simulate different table_threshold values)
     if has_gt:
-        print(f"\n── Q3: threshold sensitivity (simulated, {len(has_gt)} GT-table pages) ──")
+        print(f"\n-- Q3: threshold sensitivity (simulated, {len(has_gt)} GT-table pages) --")
         print(f"  Rule: fallback fires only when primary_tables >= 1 and score < thresh.")
         print(f"  Note: IoU values are pre-dedup proxies (val_005241-style collapses not captured).")
         print(f"  {'thresh':>7}  {'fb_pages':>8}  {'iou_crop_sim(pre-dedup)':>22}")
@@ -283,7 +288,7 @@ def main() -> None:
                     # fallback fires: use fallback IoU as proxy
                     sim_ious.append(r.best_iou_fallback)
                 else:
-                    # primary found zero tables → fallback skipped → no crop
+                    # Primary found zero tables: fallback skipped, no crop.
                     sim_ious.append(0.0)
             print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>22.3f}")
 
@@ -295,7 +300,7 @@ def main() -> None:
         m75 = sum(r.matched_75 for r in has_gt)
         prec50 = f"{m50 / pred_total:.3f}" if pred_total else "N/A"
         prec75 = f"{m75 / pred_total:.3f}" if pred_total else "N/A"
-        print(f"\n── Table-level matching ({len(has_gt)} GT-table pages) ──")
+        print(f"\n-- Table-level matching ({len(has_gt)} GT-table pages) --")
         print(f"  GT tables total    : {gt_total}")
         print(f"  crops total        : {pred_total}")
         print(f"  matched@0.50       : {m50}   recall={m50 / gt_total:.3f}  precision={prec50}")
@@ -309,7 +314,7 @@ def main() -> None:
         fp_primary = sum(1 for r in no_gt if r.primary_tables > 0)
         fp_fallback = sum(1 for r in no_gt if r.fallback_used)
         fp_crop = sum(1 for r in no_gt if r.num_crop_tables > 0)
-        print(f"\n── False-positive rate ({len(no_gt)} table-free pages) ──")
+        print(f"\n-- False-positive rate ({len(no_gt)} table-free pages) --")
         print(f"  primary detected table   : {fp_primary} / {len(no_gt)}")
         print(f"  fallback triggered       : {fp_fallback} / {len(no_gt)}")
         print(f"  final crop produced      : {fp_crop} / {len(no_gt)}")

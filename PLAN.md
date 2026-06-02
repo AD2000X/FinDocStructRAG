@@ -28,7 +28,7 @@ strong reason. Items marked "experiment" are decided by Phase results; items mar
 | **Embedding model (dense retrieval)** | **`BAAI/bge-small-en-v1.5`** | This plan (V9 unspecified) |
 | **Answer-generation LLM** | **OpenRouter (OpenAI-compatible gateway; default `openai/gpt-4o-mini`; single provider, swappable via `src/llm_client.py`)** | This plan |
 | Numeric normalization | `src/numeric_utils.py` (V9-fixed `looks_numeric`) | V9 §5.13 |
-| Eval tooling | pycocotools / custom retrieval metrics (hit/recall/MRR; ranx optional) / seqeval / sklearn / GriTS (final) / custom proxy | V9 §8 |
+| Eval tooling | custom layout IoU + table-level matching (pycocotools optional) / custom retrieval metrics (hit/recall/MRR; ranx optional) / seqeval / sklearn / GriTS (final) / custom proxy | V9 section 8 |
 | Demo | Gradio | V9 |
 | Environment / workflow | VS Code Colab extension + git-as-truth + `.py` core / `.ipynb` runner | This plan §1 |
 
@@ -312,25 +312,24 @@ OCR pipeline. The carry-forward is the table crop; nothing downstream of the cro
 **Non-goal (bounded, same discipline as 1C)**: Phase 2 is layout detection + table-crop
 handoff only. It does **not** build full-document RAG over text/figure/caption regions (a
 mixed-corpus retrieval task that waits until the layout output is trusted). Detecting
-non-table classes is for AP/IoU scoring and the future corpus, not for 1C-style answering yet.
+non-table classes is for layout diagnostics and the future corpus, not for 1C-style answering yet.
 
 #### Decision to lock first: the page-level layout detector
 
-DocLayNet is the **dataset and the AP/IoU target**, not a model. The pipeline needs a detector
-*trained on* DocLayNet classes whose output feeds §9's `id2label -> LAYOUT_LABEL_MAP ->
+DocLayNet is the **dataset and IoU target**, not a model. The pipeline needs a detector
+*trained on* DocLayNet classes whose output feeds DESIGN_SPEC section 9's `id2label -> LAYOUT_LABEL_MAP ->
 normalize_label`. On a T4 this is a **pretrained detector at inference**, not training from
 scratch. Candidates:
 
 | Option | API | Notes |
 |--------|-----|-------|
-| **HF DETR-family fine-tuned on DocLayNet** (deformable-DETR / RT-DETR / DiT variant) | `transformers.AutoModelForObjectDetection` | **Recommended.** Exposes `config.id2label` exactly as §9 assumes; no new heavy dep (transformers already in the stack); T4-friendly. One weight download. |
+| **HF DETR-family fine-tuned on DocLayNet** (deformable-DETR / RT-DETR / DiT variant) | `transformers.AutoModelForObjectDetection` | **Recommended.** Exposes `config.id2label` exactly as DESIGN_SPEC section 9 assumes; no new heavy dep (transformers already in the stack); T4-friendly. One weight download. |
 | YOLO-DocLayNet (ultralytics) | ultralytics `YOLO` | Fastest on T4, but a non-transformers API (no `config.id2label`), adds the ultralytics dep, needs a label-map shim. |
 | PP-DocLayout (PaddleX) | Paddle | Strong, but pulls the Paddle stack (a Phase 1B install pain point) and a non-HF API. |
 | Detectron2 / LayoutParser | Detectron2 | **Avoid**: brittle install on Colab T4. |
 
-Recommendation: the **HF DETR-on-DocLayNet** path, to keep §9 literal and add no heavy
-dependency. The exact model id is pinned into `config.LAYOUT_MODEL` only after it is confirmed
-to load and run on a T4 (verify before locking, like the embedding model was).
+Recommendation: the **HF DETR-on-DocLayNet** path, to keep DESIGN_SPEC section 9 literal and add no heavy
+dependency. This is now resolved and pinned after the T4 smoke.
 
 **Resolved (T4 smoke, `scripts/smoke_layout_detector.py`):** pinned
 `config.LAYOUT_MODEL = "Aryn/deformable-detr-DocLayNet"` - loads in ~3 s, ~1 GB VRAM,
@@ -340,17 +339,17 @@ with transformers 4.36.2 and uses a timm resnet50 backbone, which transformers>=
 loader leaves unloaded (degenerate detections), so `requirements-colab.txt` pins
 `transformers==4.49.0` and the smoke warns on v5.
 
-#### Architecture (DESIGN_SPEC §4.1, sequential-first + fallback)
+#### Architecture (DESIGN_SPEC section 4.1, sequential-first + fallback)
 
 ```
 page image -> layout detector -> regions {Text, Title, Table, Figure, ...}
   -> normalize_label -> select Table regions
   -> bbox_utils crop (with small padding)
-  -> [low-confidence / empty: fallback to microsoft/table-transformer-detection]
+  -> [low-confidence primary table: fallback to microsoft/table-transformer-detection]
   -> IoU dedup -> each table crop -> EXISTING Phase 1A TATR + Phase 1B OCR (unchanged)
 ```
 
-#### Phase 2-dev on Colab T4 (pure logic first, synthetic unit tests — P3)
+#### Phase 2-dev on Colab T4 (pure logic first, synthetic unit tests - P3)
 
 Use the Colab T4 runtime as the Phase 2 development runtime if it is already connected; this
 keeps the dependency stack identical to the detector smoke and avoids Windows/Colab drift.
@@ -358,43 +357,48 @@ The first implementation steps are still **pure logic**: unit tests use fake box
 detector outputs and do not call the DocLayNet model. In other words, "pure logic first"
 describes the dependency boundary, not the physical machine.
 
-1. `src/bbox_utils.py` (§4.3, the first step): coordinate/format conversions (xyxy<->xywh,
-   COCO<->pixel, DocLayNet normalized 0-1 <-> page pixels at a pinned render DPI),
-   crop-with-padding, IoU, IoU-dedup / NMS-merge. All pure, fake-box unit tests, no GPU.
-2. `src/layout_parsing.py`: `LAYOUT_LABEL_MAP` + `normalize_label()` (§9), a region dataclass,
+1. `src/bbox_utils.py` (DESIGN_SPEC section 4.3, first step): xyxy<->xywh conversion,
+   clamp, crop-with-padding, IoU, and deterministic IoU-dedup. All pure, fake-box unit
+   tests, no GPU.
+2. `src/layout_parsing.py`: `LAYOUT_LABEL_MAP` + `normalize_label()` (DESIGN_SPEC section 9), a region dataclass,
    and the **sequential + fallback** selection/dedup as a pure function over detector outputs
    with the **detector injected** (the `llm_client.complete` pattern), so the whole
    page->crops path is testable with fake detections and no GPU.
 3. `src/table_detection.py`: the fallback table-detector adapter
    (`microsoft/table-transformer-detection`, already in config) behind the same region contract.
-4. Tests: `test_label_mapping.py` (§12/§13), bbox conversions / IoU / dedup, the
+4. Tests: `test_layout_parsing.py`, `test_bbox_utils.py`, and `test_tatr_postprocess.py`: bbox conversions / IoU / dedup, the
    fallback-trigger rule (low confidence -> fallback fires; high confidence -> it does not),
    crop-coordinate correctness.
 
 #### Phase 2-colab inference / eval (same T4 runtime, real detection)
 
-1. DocLayNet access via HF `datasets`: `unique("doc_category")` first, then filter (§2); fixed
-   random subsets per §18.6 (debug seed 7 / mvp seed 42).
+1. DocLayNet access via HF `datasets`: fixed random subsets per DESIGN_SPEC section 18.6
+   (debug seed 7 / mvp seed 42).
 2. Run the layout detector on a DocLayNet page subset; persist predicted regions + table crops
    to a **Phase-2-owned** artifact stream (`outputs/layout/`), kept separate from the FinTabNet
    table outputs (P4 separation discipline).
-3. Feed detected table crops through the **existing** Phase 1A TATR topology pipeline to confirm
+3. Score table crops against DocLayNet GT with custom IoU diagnostics and greedy table-level
+   matching (`scripts/eval_layout_iou.py`), not whole-dataset claims.
+4. Feed detected table crops through the **existing** Phase 1A TATR topology pipeline to confirm
    the handoff end-to-end (full page -> detected crop -> grid), the FinTabNet->page generalization.
-4. Layout AP/IoU via `pycocotools` against DocLayNet GT regions.
 
 #### New config / artifacts
 
 - `config.LAYOUT_MODEL = "Aryn/deformable-detr-DocLayNet"`, DocLayNet paths, a pinned render DPI.
-- `outputs/layout/` (predicted regions + detected crops) and `outputs/manifests/phase2_layout_<run>.csv`
-  per the §18 manifest convention; detected crops never mixed into the FinTabNet streams.
+- `outputs/layout/` (`regions/`, `crops/`, `manifest.csv`, diagnostic CSVs, and
+  `smoke_structure.csv`); detected crops never mixed into the FinTabNet streams.
 
 **Acceptance criteria**
-- `bbox_utils`, `normalize_label`, and the sequential+fallback selection unit tests pass in the
-  Colab T4 runtime without detector/model calls (and may also pass locally) (P3).
-- Layout AP/IoU reported on a fixed DocLayNet subset (`pycocotools`), with `processed / skipped /
-  failed` + the subset descriptor (§18.6) — never phrased as a whole-dataset number.
-- End-to-end: a table crop detected from a full page runs through the existing Phase 1A TATR
-  topology pipeline and produces a grid.
+- `bbox_utils`, `normalize_label`, sequential/fallback selection, and row/col band dedup unit
+  tests pass without detector/model calls (P3).
+- Layout crop quality reported on fixed DocLayNet subsets with subset descriptor, seed, and n.
+  Current MVP gate (seed 42, n=200): mean best table-crop IoU 0.900 on GT-table pages;
+  table-level matched@0.50 recall 0.900 / precision 0.916; matched@0.75 recall 0.880 /
+  precision 0.895; table-free false-positive crop rate 13/200 = 6.5%.
+- End-to-end: detected table crops run through the existing Phase 1A TATR structure pipeline.
+  With `dedup_row_col_bands` as the default, the n=50 smoke is 50/50 OK. The full n=286
+  smoke must be rerun after the empty-grid validator fix; expected result is 285 OK / 1 WARN
+  (`val_000670_table_1`, no row boxes), still below the 5% WARN gate.
 - P4 held: DocLayNet GT regions vs detected regions stay separate artifacts; detected crops are
   not reported as GT.
 
@@ -402,7 +406,8 @@ describes the dependency boundary, not the physical machine.
 - Coordinate-space mismatch (DocLayNet normalized 0-1 / COCO xywh / PDF points / rendered-image
   pixels) -> centralize every conversion in `bbox_utils`, pin one render DPI.
 - Double counting between the layout-table path and the table-transformer-detection fallback ->
-  IoU dedup with a fixed, unit-tested threshold.
+  IoU dedup with a fixed, unit-tested threshold (`dedup_iou=0.70`). Fallback is skipped when
+  primary finds zero tables because TATR creates too many table-free false positives.
 - A DocLayNet "Table" crop may be looser than what TATR-fin expects (TATR trained on tight
   crops) -> small padding, validate the handoff on the debug subset before scaling.
 - Detectron2 / Paddle install brittleness -> the HF transformers detector avoids it.
@@ -529,7 +534,7 @@ Implementation details:
 | 1A | Yes | table topology reconstruction + metrics + 9 screenshots |
 | 1B |  | OCR content extraction + content metrics |
 | 1C |  | **table-only RAG end-to-end demo loop** |
-| 2 |  | DocLayNet layout + table crop integration |
+| 2 |  | DocLayNet layout + table crop integration (layout-crop MVP scored on branch) |
 | 3 |  | FUNSD relation P/R/F1 |
 | 4 |  | Gradio demo + full eval + report |
 
@@ -537,25 +542,24 @@ Implementation details:
 
 ## 7. Next steps
 
-**Phases 0 through 1C are complete and merged** (v1 = table-only RAG). The next track is
-**Phase 2 (DocLayNet layout integration)**; do not open a second track in parallel. The
-detector smoke is complete and `config.LAYOUT_MODEL` is pinned to
-`Aryn/deformable-detr-DocLayNet` (see §3 Phase 2). Keep using the Colab T4 runtime for Phase
-2 development if it is already connected, but keep unit tests model-free until the inference
-step.
-Order:
+**Phases 0 through 1C are complete and merged** (v1 = table-only RAG). The active branch is
+**Phase 2 (DocLayNet layout integration)**. The detector is pinned, the pure geometry/layout
+modules are tested, the fixed DocLayNet MVP subset is scored, and the crop->TATR structure
+handoff is validated on sampled crops.
 
-1. **Phase 2-dev first on T4, pure logic / synthetic unit tests (P3)**: `bbox_utils.py`
-   (coordinate conversions, IoU, crop-with-padding, dedup), `layout_parsing.py` (`LAYOUT_LABEL_MAP` +
-   `normalize_label` + the sequential/fallback selection over an injected detector),
-   `table_detection.py` (the `table-transformer-detection` fallback adapter).
-2. **Then real T4 inference / eval**: run detection on a fixed DocLayNet subset, layout AP/IoU via
-   `pycocotools`, and confirm a detected table crop feeds the existing Phase 1A topology pipeline.
+Remaining Phase 2 close-out:
+
+1. Pull the branch on Colab and rerun Step 7d with the tightened empty-grid validator
+   (`scripts/smoke_structure.py --n 286 --seed 42`). Expected: 285 OK / 1 WARN, still under
+   the <=5% WARN gate.
+2. Record the confirmed Step 7d result in `DEVLOG.md`, then open the Phase 2 PR.
+3. After merge, repin Colab notebooks to `main`; do not start Phase 3 until the Phase 2 PR is
+   merged or explicitly paused.
 
 ---
 
 ### Sources
 
-- [Google Colab is Coming to VS Code — Google Developers Blog](https://developers.googleblog.com/google-colab-is-coming-to-vs-code/)
-- [How do I access local files from colab kernel? — googlecolab/colab-vscode#210](https://github.com/googlecolab/colab-vscode/issues/210)
-- [Google Colab VS Code Extension — Marketplace](https://marketplace.visualstudio.com/items?itemName=Google.colab)
+- [Google Colab is Coming to VS Code - Google Developers Blog](https://developers.googleblog.com/google-colab-is-coming-to-vs-code/)
+- [How do I access local files from colab kernel? - googlecolab/colab-vscode#210](https://github.com/googlecolab/colab-vscode/issues/210)
+- [Google Colab VS Code Extension - Marketplace](https://marketplace.visualstudio.com/items?itemName=Google.colab)

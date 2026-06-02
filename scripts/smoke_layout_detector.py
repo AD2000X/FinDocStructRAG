@@ -12,8 +12,9 @@ load time, detections on an actual image, measured T4 VRAM, and the box -> crop 
 `bbox_utils` will later own.
 
 Run on Colab T4 (the meaningful target):
-    !pip install -q transformers timm
-    !python scripts/smoke_layout_detector.py
+    !pip install -q "transformers==4.49.0" timm
+    !python scripts/smoke_layout_detector.py --threshold 0.3 --allow-no-table
+    !python scripts/smoke_layout_detector.py --image /content/doclaynet_table_smoke.png --threshold 0.3
 Or locally on CPU as a load/shape check only (slower, NOT representative of T4 runtime).
 
 Deps: transformers, timm (DETR-family backbone), pillow, requests, torch.
@@ -53,7 +54,12 @@ def main() -> None:
         action="append",
         help="image URL or local path; repeatable. Default: the model card example page.",
     )
-    ap.add_argument("--threshold", type=float, default=0.7, help="score threshold (default: 0.7)")
+    ap.add_argument("--threshold", type=float, default=0.3, help="score threshold (default: 0.3)")
+    ap.add_argument(
+        "--allow-no-table",
+        action="store_true",
+        help="allow a no-Table run to pass (use only for model-card pages without table GT)",
+    )
     ap.add_argument(
         "--save-crop",
         metavar="PATH",
@@ -168,10 +174,16 @@ def main() -> None:
 
     # Fail-fast gate: the carry-forward is the Table crop, so a run with no Table box is a FAIL,
     # even if the model loaded and detected other classes.
-    assert any_table_box, (
-        f"no Table box detected >= {args.threshold} across {len(images)} image(s) - the table-crop "
-        "handoff is NOT verified; lower --threshold or check the model/page before pinning"
-    )
+    if not any_table_box:
+        msg = (
+            f"no Table box detected >= {args.threshold} across {len(images)} image(s) - "
+            "the table-crop handoff is NOT verified on this image set"
+        )
+        if not args.allow_no_table:
+            raise AssertionError(f"{msg}; lower --threshold or check the model/page before pinning")
+        print(f"\nsmoke OK (load/shape only) - {msg}.")
+        return
+
     print(
         "\nsmoke OK - model loads, id2label has Table, a Table box was detected and cropped. "
         "Pin config.LAYOUT_MODEL only after reviewing this output on T4."

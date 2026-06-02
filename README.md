@@ -53,6 +53,10 @@ spanning-cell mapping, grid validation, occupancy-aware HTML parsing); Phase 1B 
 content extraction (word-to-cell assignment, financial number normalization, content
 metrics); and Phase 1C table-only RAG (BM25 + dense BGE cosine + RRF retrieval, one
 chunk per table, single-provider grounded answer generation, GT-filled vs OCR-filled
-corpora scored separately). Next is Phase 2 (DocLayNet layout integration: page-level
-region detection -> table crop -> the existing Phase 1A/1B pipeline). See
-[PLAN.md](PLAN.md) for the phase roadmap.
+corpora scored separately).
+
+Current branch: Phase 2 (DocLayNet layout integration) is the active follow-up:
+page-level region detection -> table crop -> the existing Phase 1A/1B pipeline.
+The layout-crop MVP gate is implemented and scored on fixed DocLayNet subsets; the
+remaining close-out is the full crop->TATR structure smoke rerun after the tightened
+empty-grid validator. See [PLAN.md](PLAN.md) for the phase roadmap.
