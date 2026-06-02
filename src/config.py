@@ -59,6 +59,7 @@ EVALUATION = OUTPUT_ROOT / "evaluation"
 FAILURE_LOGS = OUTPUT_ROOT / "failure_logs"
 MANIFESTS = OUTPUT_ROOT / "manifests"
 FIGURES = OUTPUT_ROOT / "figures"
+LAYOUT_OUTPUT = OUTPUT_ROOT / "layout"   # Phase 2: regions JSON + crop PNGs + manifest
 
 # Hand-authored QA seed (committed in the repo, not on Drive): the manual + unanswerable
 # questions that the templated-from-GT generator cannot produce. Eval ground truth, so it
