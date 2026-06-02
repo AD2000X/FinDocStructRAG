@@ -127,9 +127,10 @@ def detect_layout(
 ) -> list[Region]:
     """Sequential-first layout detection with a low-confidence table fallback (DESIGN_SPEC §4.1).
 
-    Run the primary detector. If it produced no table region scoring >= `min_table_score`, run the
-    fallback detector and merge in ITS table regions only (the fallback has no non-table class
-    semantics). Overlapping table regions are deduped by IoU - highest score wins, deterministic
+    Run the primary detector. If it produced at least one table but none scored >= `min_table_score`,
+    run the fallback detector and merge in ITS table regions only (the fallback has no non-table
+    class semantics). If primary detected zero tables entirely, fallback is skipped — TATR produces
+    too many false positives on table-free pages to be useful in that case. Overlapping table regions are deduped by IoU - highest score wins, deterministic
     tie-break - and dedup is applied ONLY among table regions, so a fallback table never suppresses
     a primary text/figure and vice versa. Returns every region (all classes), table-deduped, so
     AP/IoU can use the full layout and the crop step just filters `label == "table"`.
@@ -138,8 +139,12 @@ def detect_layout(
     so this stays pure and testable with fakes (no model here).
     """
     regions = list(detector(image))
-    strong_tables = [r for r in regions if r.label == TABLE_LABEL and r.score >= min_table_score]
-    if not strong_tables and fallback_detector is not None:
+    primary_tables = [r for r in regions if r.label == TABLE_LABEL]
+    strong_tables = [r for r in primary_tables if r.score >= min_table_score]
+    # Fallback only when primary found at least one table but none scored high enough.
+    # Skipping fallback when primary detected zero tables avoids TATR false-positives on
+    # table-free pages (empirically 70%+ FP rate when firing on zero-table primary output).
+    if primary_tables and not strong_tables and fallback_detector is not None:
         regions = regions + [r for r in fallback_detector(image) if r.label == TABLE_LABEL]
 
     table_idx = [i for i, r in enumerate(regions) if r.label == TABLE_LABEL]
