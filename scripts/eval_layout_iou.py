@@ -92,7 +92,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--primary-threshold", type=float, default=0.3)
     p.add_argument("--table-threshold", type=float, default=0.3,
                    help="active threshold used for fallback trigger and final crop")
-    p.add_argument("--dedup-iou", type=float, default=0.5)
+    p.add_argument("--dedup-iou", type=float, default=0.7)
     p.add_argument("--require-table-gt", action="store_true",
                    help="only sample pages with GT Table annotations (category_id 9)")
     p.add_argument("--exclude-table-gt", action="store_true",
@@ -191,8 +191,9 @@ def main() -> None:
             f"  fb_used={row.fallback_used}  {elapsed:.2f}s"
         )
 
-    # Write CSV
-    diag_path = out_dir / "diagnostic.csv"
+    # Write CSV — mode-suffixed so positive/negative runs don't overwrite each other
+    mode_suffix = "_pos" if args.require_table_gt else ("_neg" if args.exclude_table_gt else "")
+    diag_path = out_dir / f"diagnostic{mode_suffix}.csv"
     with diag_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(_Row._fields))
         w.writeheader()

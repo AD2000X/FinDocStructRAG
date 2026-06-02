@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
                    help="score cutoff inside build_layout_detector")
     p.add_argument("--table-threshold", type=float, default=0.3,
                    help="score threshold for: fallback detector, fallback trigger, crop filter")
-    p.add_argument("--dedup-iou", type=float, default=0.5)
+    p.add_argument("--dedup-iou", type=float, default=0.7)
     p.add_argument("--no-fallback", action="store_true",
                    help="disable TATR fallback (primary only)")
     p.add_argument("--require-table-gt", action="store_true",
