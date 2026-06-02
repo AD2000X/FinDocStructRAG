@@ -50,12 +50,34 @@ class _Row(NamedTuple):
     best_iou_fallback: float
     best_iou_candidate: float
     best_iou_crop: float
+    # table-level greedy matching (crops vs GT)
+    matched_50: int
+    matched_75: int
 
 
 def _best_iou(regions: list[Region], gt_boxes: list) -> float:
     if not regions or not gt_boxes:
         return 0.0
     return max(iou(r.box, g) for r in regions for g in gt_boxes)
+
+
+def _greedy_match(pred_boxes: list, gt_boxes: list, threshold: float) -> int:
+    """Count GT tables matched at IoU >= threshold by greedy assignment (highest IoU first)."""
+    if not pred_boxes or not gt_boxes:
+        return 0
+    pairs = sorted(
+        ((iou(p, g), pi, gi) for pi, p in enumerate(pred_boxes) for gi, g in enumerate(gt_boxes)),
+        reverse=True,
+    )
+    matched_preds: set[int] = set()
+    matched_gts: set[int] = set()
+    for v, pi, gi in pairs:
+        if v < threshold:
+            break
+        if pi not in matched_preds and gi not in matched_gts:
+            matched_preds.add(pi)
+            matched_gts.add(gi)
+    return len(matched_gts)
 
 
 def _gt_table_boxes(ex: dict, img_w: int, img_h: int) -> list[tuple]:
@@ -167,6 +189,9 @@ def main() -> None:
         final_tables = [r for r in final_regions if r.label == TABLE_LABEL]
         final_crop_tables = [r for r in final_tables if r.score >= args.table_threshold]
         fallback_used = any(r.source == "table_fallback" for r in final_regions)
+        crop_boxes = [r.box for r in final_crop_tables]
+        matched_50 = _greedy_match(crop_boxes, gt_boxes, 0.50)
+        matched_75 = _greedy_match(crop_boxes, gt_boxes, 0.75)
 
         row = _Row(
             page_id=page_id,
@@ -181,6 +206,8 @@ def main() -> None:
             best_iou_fallback=round(_best_iou(fallback_tables, gt_boxes), 4),
             best_iou_candidate=round(_best_iou(final_tables, gt_boxes), 4),
             best_iou_crop=round(_best_iou(final_crop_tables, gt_boxes), 4),
+            matched_50=matched_50,
+            matched_75=matched_75,
         )
         rows.append(row)
         print(
@@ -188,6 +215,7 @@ def main() -> None:
             f"  prim={row.primary_tables}(max={row.primary_max_score:.2f})"
             f"  fb={row.fallback_tables}"
             f"  iou p/fb/cand/crop={row.best_iou_primary:.2f}/{row.best_iou_fallback:.2f}/{row.best_iou_candidate:.2f}/{row.best_iou_crop:.2f}"
+            f"  m50={row.matched_50}/{row.gt_tables}"
             f"  fb_used={row.fallback_used}  {elapsed:.2f}s"
         )
 
@@ -258,6 +286,22 @@ def main() -> None:
                     # primary found zero tables → fallback skipped → no crop
                     sim_ious.append(0.0)
             print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>22.3f}")
+
+    # Table-level matching summary (GT-table pages only)
+    if has_gt:
+        gt_total = sum(r.gt_tables for r in has_gt)
+        pred_total = sum(r.num_crop_tables for r in has_gt)
+        m50 = sum(r.matched_50 for r in has_gt)
+        m75 = sum(r.matched_75 for r in has_gt)
+        prec50 = f"{m50 / pred_total:.3f}" if pred_total else "N/A"
+        prec75 = f"{m75 / pred_total:.3f}" if pred_total else "N/A"
+        print(f"\n── Table-level matching ({len(has_gt)} GT-table pages) ──")
+        print(f"  GT tables total    : {gt_total}")
+        print(f"  crops total        : {pred_total}")
+        print(f"  matched@0.50       : {m50}   recall={m50 / gt_total:.3f}  precision={prec50}")
+        print(f"  matched@0.75       : {m75}   recall={m75 / gt_total:.3f}  precision={prec75}")
+        print(f"  missed GT tables   : {gt_total - m50}  (no crop with IoU >= 0.50)")
+        print(f"  extra crops        : {pred_total - m50}  (crops not matching any GT at IoU >= 0.50)")
 
     # False-positive report: only printed when all pages have no GT table
     no_gt = [r for r in rows if r.gt_tables == 0]
