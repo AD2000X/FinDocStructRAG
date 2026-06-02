@@ -84,9 +84,16 @@ def main() -> None:
     # 1. Load processor + model.
     t0 = time.time()
     # use_fast=False: match the model card's (slow) preprocessing. The new fast default warns it
-    # "may produce slightly different outputs", and for this DETR it can suppress detections.
+    # "may produce slightly different outputs".
     processor = AutoImageProcessor.from_pretrained(args.model_id, use_fast=False)
-    model = AutoModelForObjectDetection.from_pretrained(args.model_id).to(device).eval()
+    # low_cpu_mem_usage=False: force eager full-state-dict loading. The default meta-init /
+    # "materialize" path (transformers v5) leaves this checkpoint's timm resnet50 backbone
+    # unloaded (config was saved with transformers 4.36.2), giving degenerate detections.
+    model = (
+        AutoModelForObjectDetection.from_pretrained(args.model_id, low_cpu_mem_usage=False)
+        .to(device)
+        .eval()
+    )
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"[load] {args.model_id} on {device} in {time.time() - t0:.1f}s, {n_params:.1f}M params")
 
