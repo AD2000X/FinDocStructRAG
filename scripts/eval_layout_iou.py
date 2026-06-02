@@ -41,13 +41,15 @@ class _Row(NamedTuple):
     primary_max_score: float
     # fallback-alone
     fallback_tables: int
-    # detect_layout merged result
-    final_tables: int
+    # detect_layout merged result: candidates (all tables) vs cropped (score >= table_threshold)
+    num_candidate_tables: int
+    num_crop_tables: int
     fallback_used: bool
-    # IoU vs GT
+    # IoU vs GT: candidate = all detected, crop = score-filtered (matches batch runner)
     best_iou_primary: float
     best_iou_fallback: float
-    best_iou_final: float
+    best_iou_candidate: float
+    best_iou_crop: float
 
 
 def _best_iou(regions: list[Region], gt_boxes: list) -> float:
@@ -163,6 +165,7 @@ def main() -> None:
         )
         elapsed = time.time() - t1
         final_tables = [r for r in final_regions if r.label == TABLE_LABEL]
+        final_crop_tables = [r for r in final_tables if r.score >= args.table_threshold]
         fallback_used = any(r.source == "table_fallback" for r in final_regions)
 
         row = _Row(
@@ -171,18 +174,20 @@ def main() -> None:
             primary_tables=len(primary_tables),
             primary_max_score=round(primary_max_score, 4),
             fallback_tables=len(fallback_tables),
-            final_tables=len(final_tables),
+            num_candidate_tables=len(final_tables),
+            num_crop_tables=len(final_crop_tables),
             fallback_used=fallback_used,
             best_iou_primary=round(_best_iou(primary_tables, gt_boxes), 4),
             best_iou_fallback=round(_best_iou(fallback_tables, gt_boxes), 4),
-            best_iou_final=round(_best_iou(final_tables, gt_boxes), 4),
+            best_iou_candidate=round(_best_iou(final_tables, gt_boxes), 4),
+            best_iou_crop=round(_best_iou(final_crop_tables, gt_boxes), 4),
         )
         rows.append(row)
         print(
             f"gt={row.gt_tables}"
             f"  prim={row.primary_tables}(max={row.primary_max_score:.2f})"
             f"  fb={row.fallback_tables}"
-            f"  iou p/fb/fin={row.best_iou_primary:.2f}/{row.best_iou_fallback:.2f}/{row.best_iou_final:.2f}"
+            f"  iou p/fb/cand/crop={row.best_iou_primary:.2f}/{row.best_iou_fallback:.2f}/{row.best_iou_candidate:.2f}/{row.best_iou_crop:.2f}"
             f"  fb_used={row.fallback_used}  {elapsed:.2f}s"
         )
 
@@ -201,9 +206,10 @@ def main() -> None:
     print(f"\n{'='*60}")
     print(f"Pages with GT tables : {len(has_gt)} / {len(rows)}")
     print(f"Fallback used        : {len(fb_pages)} / {len(has_gt)} (GT-table pages only)")
-    print(f"\n  mean best_iou_primary  : {_mean([r.best_iou_primary  for r in has_gt]):.3f}")
-    print(f"  mean best_iou_fallback : {_mean([r.best_iou_fallback for r in has_gt]):.3f}")
-    print(f"  mean best_iou_final    : {_mean([r.best_iou_final    for r in has_gt]):.3f}")
+    print(f"\n  mean best_iou_primary   : {_mean([r.best_iou_primary   for r in has_gt]):.3f}")
+    print(f"  mean best_iou_fallback  : {_mean([r.best_iou_fallback  for r in has_gt]):.3f}")
+    print(f"  mean best_iou_candidate : {_mean([r.best_iou_candidate for r in has_gt]):.3f}  (all detected tables)")
+    print(f"  mean best_iou_crop      : {_mean([r.best_iou_crop      for r in has_gt]):.3f}  (score >= table_threshold)")
 
     # Q1 ─ primary miss vs low score
     print(f"\n── Q1: on {len(fb_pages)} fallback pages ──")
@@ -232,22 +238,31 @@ def main() -> None:
     # Q3 ─ threshold sensitivity (simulate different table_threshold values)
     if has_gt:
         print(f"\n── Q3: threshold sensitivity (simulated, {len(has_gt)} GT-table pages) ──")
-        print(f"  {'thresh':>7}  {'fb_pages':>8}  {'mean_iou_final':>14}")
+        print(f"  Rule: fallback fires only when primary_tables >= 1 and score < thresh.")
+        print(f"  {'thresh':>7}  {'fb_pages':>8}  {'mean_iou_crop_sim':>17}")
         for thresh in [0.30, 0.40, 0.50, 0.60, 0.70]:
-            sim_fb = sum(1 for r in has_gt if r.primary_max_score < thresh)
-            # If primary above thresh -> use primary IoU; else use fallback IoU
-            sim_ious = [
-                r.best_iou_primary if r.primary_max_score >= thresh else r.best_iou_fallback
-                for r in has_gt
-            ]
-            print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>14.3f}")
+            # Only pages where primary found >= 1 table but none above thresh trigger fallback
+            sim_fb = sum(
+                1 for r in has_gt if r.primary_tables > 0 and r.primary_max_score < thresh
+            )
+            sim_ious = []
+            for r in has_gt:
+                if r.primary_max_score >= thresh:
+                    sim_ious.append(r.best_iou_primary)
+                elif r.primary_tables > 0:
+                    # fallback fires: use fallback IoU as proxy
+                    sim_ious.append(r.best_iou_fallback)
+                else:
+                    # primary found zero tables → fallback skipped → no crop
+                    sim_ious.append(0.0)
+            print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>17.3f}")
 
     # False-positive report: only printed when all pages have no GT table
     no_gt = [r for r in rows if r.gt_tables == 0]
     if no_gt and len(no_gt) == len(rows):
         fp_primary = sum(1 for r in no_gt if r.primary_tables > 0)
         fp_fallback = sum(1 for r in no_gt if r.fallback_used)
-        fp_crop = sum(1 for r in no_gt if r.final_tables > 0)
+        fp_crop = sum(1 for r in no_gt if r.num_crop_tables > 0)
         print(f"\n── False-positive rate ({len(no_gt)} table-free pages) ──")
         print(f"  primary detected table   : {fp_primary} / {len(no_gt)}")
         print(f"  fallback triggered       : {fp_fallback} / {len(no_gt)}")
