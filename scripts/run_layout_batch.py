@@ -86,6 +86,11 @@ def main() -> None:
     crops_dir = out_dir / "crops"
     regions_dir.mkdir(parents=True, exist_ok=True)
     crops_dir.mkdir(parents=True, exist_ok=True)
+    stale = list(regions_dir.glob("*.json")) + list(crops_dir.glob("*.png"))
+    for f in stale:
+        f.unlink()
+    if stale:
+        print(f"[batch] cleared {len(stale)} stale artifact(s) from previous run")
 
     print("[batch] loading detectors ...")
     t0 = time.time()

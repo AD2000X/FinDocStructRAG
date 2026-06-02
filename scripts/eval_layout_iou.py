@@ -239,7 +239,8 @@ def main() -> None:
     if has_gt:
         print(f"\n── Q3: threshold sensitivity (simulated, {len(has_gt)} GT-table pages) ──")
         print(f"  Rule: fallback fires only when primary_tables >= 1 and score < thresh.")
-        print(f"  {'thresh':>7}  {'fb_pages':>8}  {'mean_iou_crop_sim':>17}")
+        print(f"  Note: IoU values are pre-dedup proxies (val_005241-style collapses not captured).")
+        print(f"  {'thresh':>7}  {'fb_pages':>8}  {'iou_crop_sim(pre-dedup)':>22}")
         for thresh in [0.30, 0.40, 0.50, 0.60, 0.70]:
             # Only pages where primary found >= 1 table but none above thresh trigger fallback
             sim_fb = sum(
@@ -255,7 +256,7 @@ def main() -> None:
                 else:
                     # primary found zero tables → fallback skipped → no crop
                     sim_ious.append(0.0)
-            print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>17.3f}")
+            print(f"  {thresh:>7.2f}  {sim_fb:>8}  {_mean(sim_ious):>22.3f}")
 
     # False-positive report: only printed when all pages have no GT table
     no_gt = [r for r in rows if r.gt_tables == 0]
