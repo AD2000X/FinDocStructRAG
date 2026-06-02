@@ -71,10 +71,40 @@ def main() -> None:
     if device == "cpu":
         print("WARNING: no CUDA - this is a load/shape check only, NOT a T4 runtime measurement.")
 
+    # DETR-family timm backbones emit one "copying from a non-meta parameter ... no-op"
+    # UserWarning per backbone tensor on load - benign (transformers#37615), but hundreds of
+    # them bury the real smoke output. Silence just that class and quiet the HF load notices.
+    import warnings
+
+    from transformers.utils import logging as hf_logging
+
+    warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
+    hf_logging.set_verbosity_error()
+
+    # Guard: transformers v5's meta-init loader does NOT load this checkpoint's timm resnet50
+    # backbone (config saved with 4.36.2) -> degenerate boxes. Make that loud, not silent.
+    import transformers
+
+    if int(transformers.__version__.split(".")[0]) >= 5:
+        print(
+            f"WARNING: transformers {transformers.__version__} (v5+) loads this checkpoint's timm "
+            "backbone incorrectly -> degenerate detections. Pin transformers==4.49.0 (see "
+            "notebooks/04_phase2_layout.ipynb) before trusting this result."
+        )
+
     # 1. Load processor + model.
     t0 = time.time()
-    processor = AutoImageProcessor.from_pretrained(args.model_id)
-    model = AutoModelForObjectDetection.from_pretrained(args.model_id).to(device).eval()
+    # use_fast=False: match the model card's (slow) preprocessing. The new fast default warns it
+    # "may produce slightly different outputs".
+    processor = AutoImageProcessor.from_pretrained(args.model_id, use_fast=False)
+    # low_cpu_mem_usage=False: force eager full-state-dict loading. The default meta-init /
+    # "materialize" path (transformers v5) leaves this checkpoint's timm resnet50 backbone
+    # unloaded (config was saved with transformers 4.36.2), giving degenerate detections.
+    model = (
+        AutoModelForObjectDetection.from_pretrained(args.model_id, low_cpu_mem_usage=False)
+        .to(device)
+        .eval()
+    )
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"[load] {args.model_id} on {device} in {time.time() - t0:.1f}s, {n_params:.1f}M params")
 
@@ -99,29 +129,35 @@ def main() -> None:
             outputs = model(**inputs)
         dt = time.time() - t1
 
+        # Post-process at threshold 0 so we can ALWAYS show the top detections - a "0 boxes"
+        # result is then diagnosable (broken preprocessing vs page-has-no-table vs threshold).
         target_sizes = torch.tensor([(height, width)])  # (h, w), CPU is fine for post-process
-        results = processor.post_process_object_detection(
-            outputs, target_sizes=target_sizes, threshold=args.threshold
+        res = processor.post_process_object_detection(
+            outputs, target_sizes=target_sizes, threshold=0.0
         )[0]
-        n = len(results["scores"])
-        print(f"\n[detect] {src}  size=({width}, {height})  {n} boxes >= {args.threshold} in {dt:.2f}s")
-        for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-            xyxy = [round(v, 1) for v in box.tolist()]
-            print(f"    {id2label[label.item()]:<16} {score.item():.3f}  {xyxy}")
+        order = res["scores"].argsort(descending=True).tolist()
+
+        print(f"\n[detect] {src}  size=({width}, {height})  inference {dt:.2f}s  (top 8 at any score):")
+        for k in order[:8]:
+            xyxy = [round(v, 1) for v in res["boxes"][k].tolist()]
+            print(f"    {id2label[res['labels'][k].item()]:<14} {res['scores'][k].item():.3f}  {xyxy}")
         if device == "cuda":
             print(f"[vram] peak {torch.cuda.max_memory_allocated() / 1e6:.0f} MB on this image")
 
+        keep = [k for k in order if res["scores"][k].item() >= args.threshold]
+        table_keep = [k for k in keep if res["labels"][k].item() in table_id_set]
+        print(f"[gate] {len(keep)} boxes >= {args.threshold}, of which {len(table_keep)} Table")
+
         # 4. Table-crop gate: crop the top-score TABLE box (the actual Phase 2 carry-forward),
         #    not any top-score label, so a page of only Text/Title does not pass as OK.
-        table_idx = [k for k, lab in enumerate(results["labels"].tolist()) if lab in table_id_set]
-        if table_idx:
+        if table_keep:
             any_table_box = True
-            best = max(table_idx, key=lambda k: results["scores"][k].item())
-            x1, y1, x2, y2 = (int(round(v)) for v in results["boxes"][best].tolist())
+            best = table_keep[0]  # order is score-descending
+            x1, y1, x2, y2 = (int(round(v)) for v in res["boxes"][best].tolist())
             box = (max(0, x1), max(0, y1), min(width, x2), min(height, y2))  # clamp to page
             crop = image.crop(box)  # PIL (left, upper, right, lower) == xyxy
             print(
-                f"[crop] top Table box (score {results['scores'][best].item():.3f}) {box} "
+                f"[crop] top Table box (score {res['scores'][best].item():.3f}) {box} "
                 f"-> crop size {crop.size}"
             )
             if args.save_crop:
