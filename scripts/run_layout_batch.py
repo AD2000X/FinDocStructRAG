@@ -50,19 +50,24 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dedup-iou", type=float, default=0.5)
     p.add_argument("--no-fallback", action="store_true",
                    help="disable TATR fallback (primary only)")
+    p.add_argument("--require-table-gt", action="store_true",
+                   help="only sample pages with GT Table annotations (category_id 9)")
     return p.parse_args()
 
 
 def _print_summary(manifest_path: Path) -> None:
     rows = list(csv.DictReader(manifest_path.open()))
     status_counts: dict[str, int] = {}
-    total_cropped = fallback_count = 0
+    total_cropped = fallback_count = gt_pages = 0
     for r in rows:
         status_counts[r["status"]] = status_counts.get(r["status"], 0) + 1
         total_cropped += int(r["num_cropped"])
         if r["fallback_used"] == "True":
             fallback_count += 1
-    print(f"  status      : {status_counts}")
+        if int(r.get("gt_tables", 0)) > 0:
+            gt_pages += 1
+    print(f"  status         : {status_counts}")
+    print(f"  gt_table pages : {gt_pages} / {len(rows)}")
     print(f"  tables cropped : {total_cropped}")
     print(f"  fallback used  : {fallback_count} / {len(rows)}")
 
@@ -101,13 +106,18 @@ def main() -> None:
 
     ds = load_dataset("docling-project/DocLayNet-v1.1", split=args.split)
     rng = random.Random(args.seed)
-    indices = sorted(rng.sample(range(len(ds)), k=min(args.n, len(ds))))
+    if args.require_table_gt:
+        all_cats = ds["category_id"]
+        pool = [i for i, cats in enumerate(all_cats) if 9 in cats]
+    else:
+        pool = list(range(len(ds)))
+    indices = sorted(rng.sample(pool, k=min(args.n, len(pool))))
     subset = ds.select(indices)
-    print(f"[batch] {len(indices)} pages selected from {len(ds)} total")
+    print(f"[batch] {len(indices)} pages selected (pool={len(pool)} require_table_gt={args.require_table_gt})")
 
     _FIELDS = [
         "page_id", "status",
-        "num_regions", "num_tables", "num_cropped",
+        "gt_tables", "num_regions", "num_tables", "num_cropped",
         "fallback_used", "error",
     ]
     manifest_path = out_dir / "manifest.csv"
@@ -118,9 +128,11 @@ def main() -> None:
 
         for i, (orig_idx, ex) in enumerate(zip(indices, subset)):
             page_id = f"val_{orig_idx:06d}"
+            gt_tables = sum(1 for c in ex.get("category_id", []) if c == 9)
             print(f"[{i + 1:3d}/{len(indices)}] {page_id}", end="  ", flush=True)
             row: dict = {
                 "page_id": page_id, "status": "failed",
+                "gt_tables": gt_tables,
                 "num_regions": 0, "num_tables": 0, "num_cropped": 0,
                 "fallback_used": False, "error": "",
             }

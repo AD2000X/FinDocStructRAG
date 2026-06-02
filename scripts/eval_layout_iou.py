@@ -90,6 +90,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--table-threshold", type=float, default=0.5,
                    help="active threshold used for fallback trigger and final crop")
     p.add_argument("--dedup-iou", type=float, default=0.5)
+    p.add_argument("--require-table-gt", action="store_true",
+                   help="only sample pages with GT Table annotations (category_id 9)")
+    p.add_argument("--exclude-table-gt", action="store_true",
+                   help="only sample pages with no GT Table (false-positive diagnostic)")
     return p.parse_args()
 
 
@@ -115,9 +119,18 @@ def main() -> None:
 
     ds = load_dataset("docling-project/DocLayNet-v1.1", split=args.split)
     rng = random.Random(args.seed)
-    indices = sorted(rng.sample(range(len(ds)), k=min(args.n, len(ds))))
+    if args.require_table_gt:
+        all_cats = ds["category_id"]
+        pool = [i for i, cats in enumerate(all_cats) if 9 in cats]
+    elif args.exclude_table_gt:
+        all_cats = ds["category_id"]
+        pool = [i for i, cats in enumerate(all_cats) if 9 not in cats]
+    else:
+        pool = list(range(len(ds)))
+    indices = sorted(rng.sample(pool, k=min(args.n, len(pool))))
     subset = ds.select(indices)
-    print(f"[diag] {len(indices)} pages (seed={args.seed} split={args.split})")
+    mode = "table-only" if args.require_table_gt else ("no-table" if args.exclude_table_gt else "random")
+    print(f"[diag] {len(indices)} pages (seed={args.seed} split={args.split} mode={mode} pool={len(pool)})")
 
     rows: list[_Row] = []
 
