@@ -62,9 +62,9 @@ def validate_grid_geometry(
 ) -> bool:
     """Sanity-check a grid (DESIGN_SPEC §5.3).
 
-    Checks: negative dimensions, row/col sort order, adjacent overlap > 0.3, and
-    tiny cells (area < 100). Returns True when the grid is sane; failures are logged
-    if a FailureLogger is given.
+    Checks: missing row/column axes, negative dimensions, row/col sort order, adjacent
+    overlap > 0.3, and tiny cells (area < 100). Returns True when the grid is sane;
+    failures are logged if a FailureLogger is given.
     """
     ok = True
 
@@ -73,6 +73,11 @@ def validate_grid_geometry(
         ok = False
         if logger is not None:
             logger.log(sample_id, "phase1a", "grid_geometry", reason)
+
+    if not row_boxes:
+        fail("no row boxes detected")
+    if not col_boxes:
+        fail("no col boxes detected")
 
     for r in row_boxes:
         x1, y1, x2, y2 = r["bbox"]
@@ -378,7 +383,12 @@ def normalize_tatr_prediction(prediction: dict) -> CanonicalTable:
     Expects row_boxes / col_boxes (and optional spanning_cells) as lists of dicts with a
     "bbox" key. When column_headers boxes are present (the GT structure XML and the TATR
     raw artifact both carry them), the cells they cover are flagged is_header.
+
+    Overlapping row/col bands are deduped before grid construction so that the TATR
+    model's tendency to emit thin overlapping bands on dense non-financial crops does
+    not produce invalid grids.
     """
+    prediction = dedup_row_col_bands(prediction)
     rows = sorted(prediction.get("row_boxes", []), key=lambda r: r["bbox"][1])
     cols = sorted(prediction.get("col_boxes", []), key=lambda c: c["bbox"][0])
     cells = boxes_to_grid(rows, cols, prediction.get("spanning_cells"))

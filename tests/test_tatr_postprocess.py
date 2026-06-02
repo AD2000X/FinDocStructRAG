@@ -152,6 +152,12 @@ def test_validate_grid_geometry_detects_tiny_cell():
     assert validate_grid_geometry(rows, cols, cells) is False
 
 
+def test_validate_grid_geometry_rejects_missing_rows_or_cols():
+    rows, cols = _rows(), _cols()
+    assert validate_grid_geometry([], cols, []) is False
+    assert validate_grid_geometry(rows, [], []) is False
+
+
 # --- HTML parsing -----------------------------------------------------------------
 
 def test_html_to_canonical_simple():
