@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from . import bbox_utils
 
 TABLE_LABEL = "table"
+DEFAULT_TABLE_SCORE = 0.3
+DEFAULT_TABLE_DEDUP_IOU = 0.7
 
 # Raw detector label string -> canonical lowercase label. Explicit (not a blind `.lower()`) so the
 # two detectors' table strings reconcile to one "table" and the DocLayNet classes are pinned.
@@ -122,8 +124,8 @@ def detect_layout(
     detector: Callable[[object], Sequence[Region]],
     fallback_detector: Callable[[object], Sequence[Region]] | None = None,
     *,
-    min_table_score: float = 0.5,
-    dedup_iou: float = 0.5,
+    min_table_score: float = DEFAULT_TABLE_SCORE,
+    dedup_iou: float = DEFAULT_TABLE_DEDUP_IOU,
 ) -> list[Region]:
     """Sequential-first layout detection with a low-confidence table fallback (DESIGN_SPEC §4.1).
 
