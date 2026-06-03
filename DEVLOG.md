@@ -202,9 +202,9 @@ Decisions outgrow this file, split them into `DECISIONS.md` (or `docs/adr/`).
   matched@0.75 recall 0.880 / precision 0.895. On 200 table-free pages, final crop false
   positives were 13/200 (6.5%) and fallback fired 0/200.
 - **Structure handoff:** n=50 crop smoke improved from 37 OK / 13 WARN before band dedup to
-  50 OK / 0 WARN after band dedup. The old n=286 full smoke exposed one empty-grid crop
-  (`val_000670_table_1`, no row boxes); the validator is now tightened so rerunning Step 7d
-  should report 285 OK / 1 WARN, still under the <=5% WARN gate.
+  50 OK / 0 WARN after band dedup. Step 7d full-crop smoke confirmed (seed=42, n=286):
+  **285 OK / 1 WARN** (0.35%); the sole WARN is `val_000670_table_1` (rows=0, no row boxes
+  detected), well under the <=5% WARN gate.
 - **Scope caveat:** these are fixed-subset Phase 2 diagnostics, not whole-DocLayNet AP. The
   crop->TATR smoke validates grid geometry compatibility, not OCR text/content quality.
 - **Files/Commits:** `src/bbox_utils.py`, `src/layout_parsing.py`, `src/layout_detector.py`,
