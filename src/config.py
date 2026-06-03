@@ -56,6 +56,7 @@ RAG_INDEX = OUTPUT_ROOT / "rag_index"
 CHUNKS = RAG_INDEX / "chunks"   # serialized table chunks per (text_source, serialization)
 QA_DIR = OUTPUT_ROOT / "qa"     # generated + merged QA sets (on Drive)
 EVALUATION = OUTPUT_ROOT / "evaluation"
+FUNSD_OUTPUT = OUTPUT_ROOT / "funsd"   # Phase 3: relation-linking artifacts (kept separate, P4)
 FAILURE_LOGS = OUTPUT_ROOT / "failure_logs"
 MANIFESTS = OUTPUT_ROOT / "manifests"
 FIGURES = OUTPUT_ROOT / "figures"
@@ -65,6 +66,13 @@ LAYOUT_OUTPUT = OUTPUT_ROOT / "layout"   # Phase 2: regions JSON + crop PNGs + m
 # questions that the templated-from-GT generator cannot produce. Eval ground truth, so it
 # is version-controlled and travels with git pull.
 QA_MANUAL_SEED = ROOT / "qa" / "qa_manual_seed.jsonl"
+
+# Phase 3 FUNSD dataset (raw annotation JSON; gitignored under data/, fetched by
+# scripts/fetch_funsd.py). V1 is annotation-only: the JSON carries entity text/bbox/label
+# and the GT linking pairs, so no image pixels are loaded. 149 train + 50 test = 199 forms.
+FUNSD_ROOT = DATA_ROOT / "raw" / "funsd" / "dataset"
+FUNSD_TRAIN = FUNSD_ROOT / "training_data" / "annotations"   # 149 forms
+FUNSD_TEST = FUNSD_ROOT / "testing_data" / "annotations"     # 50 forms
 
 # Model IDs (DESIGN_SPEC sections 4.2 and 7; PLAN section 0).
 TATR_STRUCTURE_MODEL = "microsoft/table-transformer-structure-recognition-v1.1-fin"

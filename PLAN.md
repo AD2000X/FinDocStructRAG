@@ -542,19 +542,26 @@ Implementation details:
 
 ## 7. Next steps
 
-**Phases 0 through 1C are complete and merged** (v1 = table-only RAG). The active branch is
-**Phase 2 (DocLayNet layout integration)**. The detector is pinned, the pure geometry/layout
-modules are tested, the fixed DocLayNet MVP subset is scored, and the crop->TATR structure
-handoff is validated on sampled crops.
+**Phases 0 through 2 are complete and merged** (v1 = table-only RAG; Phase 2 = DocLayNet
+layout-crop integration, merged to `main` 2026-06-03). The active branch is
+**Phase 3 (FUNSD relation branch)**, `feature/phase3-funsd-relations` off `main`.
 
-Remaining Phase 2 close-out:
+Phase 3 V1 is implemented and scored (entirely local, CPU-only, no Colab):
 
-1. Pull the branch on Colab and rerun Step 7d with the tightened empty-grid validator
-   (`scripts/smoke_structure.py --n 286 --seed 42`). Expected: 285 OK / 1 WARN, still under
-   the <=5% WARN gate.
-2. Record the confirmed Step 7d result in `DEVLOG.md`, then open the Phase 2 PR.
-3. After merge, repin Colab notebooks to `main`; do not start Phase 3 until the Phase 2 PR is
-   merged or explicitly paused.
+1. Annotation-only deterministic relation baseline: `src/funsd_extraction.py` (parse + dedupe
+   + per-answer-argmax predictor), `src/eval_funsd.py` (set-based P/R/F1),
+   `scripts/evaluate_funsd.py` (+ `scripts/fetch_funsd.py`), `tests/test_funsd_relations.py`
+   (17 synthetic tests). Full suite 236 passed.
+2. Headline (held-out `test_50.qa_links`): P 0.946 / R 0.590 / **F1 0.727**; secondaries in
+   `DEVLOG.md` (2026-06-03) and `outputs/evaluation/phase3_funsd_relations.json`.
+
+Remaining:
+
+1. Open the Phase 3 PR.
+2. Optional (train-only): tune `HeuristicParams` on `train_149` if higher recall is wanted;
+   never on `test_50`. FUNSD token classification (V2 / seqeval) and threshold-based multi-link
+   matching are future work, not V1.
+3. Phase 4 (full demo + evaluation + report) is the next phase.
 
 ---
 
