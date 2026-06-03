@@ -47,16 +47,17 @@ pytest
 
 ## Status
 
-Phases 0 through 1C are complete; the v1 release (table-only RAG) is merged to `main`.
-Delivered: the repo foundation; Phase 1A table topology (TATR grid derivation,
-spanning-cell mapping, grid validation, occupancy-aware HTML parsing); Phase 1B OCR
-content extraction (word-to-cell assignment, financial number normalization, content
-metrics); and Phase 1C table-only RAG (BM25 + dense BGE cosine + RRF retrieval, one
-chunk per table, single-provider grounded answer generation, GT-filled vs OCR-filled
-corpora scored separately).
+**Phases 0 through 3 are complete and merged to `main`.** Delivered: the repo foundation;
+Phase 1A table topology (TATR grid derivation, spanning-cell mapping, grid validation,
+occupancy-aware HTML parsing); Phase 1B OCR content extraction (word-to-cell assignment,
+financial number normalization, content metrics); Phase 1C table-only RAG (BM25 + dense
+BGE cosine + RRF retrieval, one chunk per table, single-provider grounded answer
+generation, GT-filled vs OCR-filled corpora scored separately); Phase 2 DocLayNet
+layout-crop integration (page-level region detection -> table crop -> the Phase 1A/1B
+pipeline); and Phase 3 FUNSD relation-linking baseline (annotation-only deterministic
+predictor, held-out `test_50.qa_links` F1 0.727).
 
-Current branch: Phase 2 (DocLayNet layout integration) is the active follow-up:
-page-level region detection -> table crop -> the existing Phase 1A/1B pipeline.
-The layout-crop MVP gate is implemented and scored on fixed DocLayNet subsets; the
-remaining close-out is the full crop->TATR structure smoke rerun after the tightened
-empty-grid validator. See [PLAN.md](PLAN.md) for the phase roadmap.
+Current phase: Phase 4 (full demo + evaluation + report) is in progress on
+`feature/phase4-demo-eval-report` — a capstone that aggregates the per-phase metrics into
+one summary, a key-optional Gradio demo, and a written report. See [PLAN.md](PLAN.md) for
+the phase roadmap.

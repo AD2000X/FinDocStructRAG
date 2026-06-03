@@ -544,7 +544,16 @@ Implementation details:
 
 **Phases 0 through 3 are complete and merged** (v1 = table-only RAG; Phase 2 = DocLayNet
 layout-crop integration; Phase 3 = FUNSD relation baseline, both merged to `main`
-2026-06-03). **Phase 4 (full demo + evaluation + report) is the next phase.**
+2026-06-03). **Phase 4 (full demo + evaluation + report) is in progress** on
+`feature/phase4-demo-eval-report`; PR-A (the eval-summary backbone) has landed.
+
+Phase 4 PR-A delivered (capstone summary backbone; see `docs/phase4_brief.md`):
+`src/phase4_summary.py` (pure per-phase summarizers + inline layout-CSV aggregation + markdown
+render), `scripts/build_phase4_summary.py` (writes `outputs/evaluation/phase4_summary.json` and
+the committed `reports/phase4_metrics.md`), `tests/test_phase4_summary.py` (10 synthetic tests).
+Report numbers are generated from the summary (never hand-copied), guarded by a no-drift gate.
+Next: PR-B (`reports/final_report.md` + `notebooks/07_final_report.ipynb`) and PR-C
+(`scripts/run_demo.py` + `notebooks/06_demo.ipynb`, key-optional Gradio demo).
 
 Phase 3 V1 delivered (annotation-only deterministic relation baseline; see
 `docs/phase3_brief.md`): `src/funsd_extraction.py` (parse + dedupe + per-answer-argmax
