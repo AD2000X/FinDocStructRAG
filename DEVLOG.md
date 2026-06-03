@@ -181,6 +181,32 @@ Decisions outgrow this file, split them into `DECISIONS.md` (or `docs/adr/`).
 
 ---
 
+## 2026-06-03 - Phase 4 eval-summary backbone (PR-A)
+
+### Result - one summary aggregated from the per-phase artifacts; report numbers never hand-copied
+
+- **What landed:** `src/phase4_summary.py` (pure summarizers + layout aggregation + markdown
+  render, no file/Drive/gradio IO), `scripts/build_phase4_summary.py` (reads the five metrics
+  JSONs + three layout CSVs, writes `outputs/evaluation/phase4_summary.json` gitignored +
+  `reports/phase4_metrics.md` committed), `tests/test_phase4_summary.py` (10 synthetic tests).
+  See `docs/phase4_brief.md`.
+- **Phase 2 has no metrics JSON**, so the builder aggregates it inline from the staged
+  `diagnostic_pos.csv` / `diagnostic_neg.csv` / `smoke_structure.csv`, matching the table-level
+  matching + FP definitions in `scripts/eval_layout_iou.py` and the OK/WARN split in
+  `scripts/smoke_structure.py`. This reproduced the prior DEVLOG layout numbers **exactly** (mean
+  crop IoU 0.900; matched@0.50 0.900/0.916; matched@0.75 0.880/0.895; crop->TATR 285/286 = 0.997),
+  confirming the inline path needs no Colab re-run.
+- **No-drift gate:** `render_metrics_markdown` is pure and deterministic and the file is written
+  with LF; rebuilding leaves `reports/phase4_metrics.md` byte-identical, so the committed report
+  snippet cannot silently drift from the artifacts.
+- **Reporting choices:** retrieval reports hit@{1,5,10} + MRR@10 only (recall@k == hit@k under one
+  relevant chunk per question, `src/eval_retrieval.py`); a missing artifact degrades to
+  `{"available": false}` rather than failing.
+- **Result:** full `pytest` green (246, +10). Headline echoes: FUNSD `test_50.qa_links` F1 0.727;
+  QA `gt_markdown` answer_exact 0.675. PR-B (report) and PR-C (Gradio demo) follow.
+
+---
+
 ## 2026-06-03 - Phase 3 FUNSD relation-linking baseline (V1)
 
 ### Result - annotation-only spatial heuristic; high precision, recall is the design ceiling
