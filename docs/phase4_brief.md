@@ -1,17 +1,16 @@
-# Phase 4 — Demo + Eval Summary + Final Report (capstone)
+# Phase 4 — Final Demo + Eval Summary + Final Report
 
 > Implementation brief for Phase 4. Committed in the repo (travels with `git pull` to Colab) so
 > the references to it in `DEVLOG.md` and the `src/phase4_summary.py` /
-> `scripts/build_phase4_summary.py` docstrings resolve. Status: PR-A (the eval-summary backbone)
-> implemented on `feature/phase4-demo-eval-report` — `src/phase4_summary.py`,
-> `scripts/build_phase4_summary.py`, `tests/test_phase4_summary.py`, and the generated
-> `reports/phase4_metrics.md`. PR-B (report) and PR-C (demo) follow.
+> `scripts/build_phase4_summary.py` docstrings resolve. Status: PR-A/PR-B/PR-C are implemented
+> on `feature/phase4-demo` — summary backbone, generated metrics, final report, report notebook,
+> key-optional Gradio demo, and demo notebook.
 
 ## Context
 
 Phases 0-3 are merged to `main` (FinTabNet.c table topology + OCR content + table-only RAG +
-DocLayNet layout + FUNSD relations). Phase 4 is the **capstone**: make the work presentable,
-reportable, and reproducible. It is explicitly **not new research** — it assembles the existing
+DocLayNet layout + FUNSD relations). Phase 4 is the **final integration**: make the work
+presentable, reportable, and reproducible. It is explicitly **not new research** — it assembles the existing
 deterministic/custom metrics into one summary, a Gradio demo, and a written report.
 GriTS/Ragas/DeepEval are future work.
 
@@ -97,8 +96,9 @@ cross-encoder reranker / learned query routing; live PDF -> pipeline; HF Spaces 
 ## Build order (TDD) + PR boundaries
 - **PR-A (core, done):** tests -> `src/phase4_summary.py` -> `scripts/build_phase4_summary.py` ->
   generated `reports/phase4_metrics.md`; + README/DEVLOG/PLAN docs.
-- **PR-B (report):** `reports/final_report.md` + `notebooks/07_final_report.ipynb`.
-- **PR-C (demo):** `scripts/run_demo.py` + `notebooks/06_demo.ipynb`.
+- **PR-B (report, done):** `reports/final_report.md` + `notebooks/07_final_report.ipynb`.
+- **PR-C (demo, done):** `scripts/run_demo.py` + `notebooks/06_demo.ipynb`.
 
 ## Branch
-`feature/phase4-demo-eval-report` cut from the latest `origin/main` after `git fetch`.
+`feature/phase4-demo` integrates PR-A/PR-B/PR-C and was cut from the latest `origin/main` after
+`git fetch`.

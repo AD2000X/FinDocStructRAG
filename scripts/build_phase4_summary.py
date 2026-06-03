@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Phase 4 capstone summary from the per-phase evaluation artifacts.
+"""Build the Phase 4 summary from the per-phase evaluation artifacts.
 
 Reads the five metrics JSONs + the three Phase 2 layout CSVs from outputs/, aggregates them with
 the pure helpers in src/phase4_summary.py, and writes:
@@ -50,7 +50,7 @@ def _layout_part(layout_dir: Path):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build the Phase 4 capstone summary.")
+    ap = argparse.ArgumentParser(description="Build the Phase 4 summary.")
     ap.add_argument("--run-id", default="mvp_rand",
                     help="run-id suffix of the Phase 1A/1B deliverable artifacts")
     args = ap.parse_args()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 4 demo: artifact-backed Gradio app for the FinDocStructRAG capstone.
+"""Phase 4 final demo: artifact-backed Gradio app for FinDocStructRAG.
 
 Serves the already-produced evaluation artifacts (metrics, table outputs, layout crops, FUNSD
 results) and does live BM25 retrieval + (optional) grounded answer generation over the existing
@@ -238,7 +238,7 @@ def funsd_view() -> str:
 
 def overview_view() -> str:
     summary = _load_json(config.EVALUATION / "phase4_summary.json")
-    parts = ["## Capstone overview", ""]
+    parts = ["## Project overview", ""]
     if summary:
         parts.append("**Artifact availability:** " + ", ".join(
             f"{name}={'OK' if part.get('available') else 'MISSING'}" for name, part in summary.items()))
@@ -277,8 +277,8 @@ def main() -> None:
     pages = list_layout_pages()
     answer_gen = "enabled" if HAS_KEY else "disabled (no OPENROUTER_API_KEY)"
 
-    with gr.Blocks(title="FinDocStructRAG capstone demo") as demo:
-        gr.Markdown(f"# FinDocStructRAG - capstone demo\n"
+    with gr.Blocks(title="FinDocStructRAG final demo") as demo:
+        gr.Markdown(f"# FinDocStructRAG - final demo\n"
                     f"Artifact-backed. Retrieval: {', '.join(RETRIEVAL_METHODS)}. "
                     f"Answer generation: {answer_gen}.")
 

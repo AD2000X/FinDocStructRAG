@@ -1,4 +1,4 @@
-"""Phase 4 capstone: aggregate the per-phase evaluation artifacts into one summary.
+"""Phase 4 summary: aggregate the per-phase evaluation artifacts into one summary.
 
 Pure helpers only - no file IO, no Drive, no gradio. Each summarizer takes an already-loaded
 metrics dict (the per-phase evaluation JSON) or parsed CSV rows (layout) and returns a normalized
