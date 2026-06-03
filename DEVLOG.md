@@ -213,7 +213,7 @@ Reading it honestly:
   QA-only heuristic cannot cover header->question and other link types. `all_199` carries the
   "contains the 50 test + 149 tuned forms, not held-out" caveat in the report JSON.
 
-Design (locked in discussion; see `plans/phase3-funsd-relations.md`):
+Design (locked in discussion; see `docs/phase3_brief.md`):
 - **Predictor:** per-answer argmax + distance gate; distances normalized by the form's median
   entity height; two separate knobs (`max_distance_units` distance gate, `min_score` floor).
 - **GT links:** deduped to undirected frozensets (FUNSD records links bidirectionally), then
