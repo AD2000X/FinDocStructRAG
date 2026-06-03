@@ -13,7 +13,7 @@ works across differently-scaled scans.
 
 GT links are stored undirected (FUNSD records a link on both endpoints); `qa_gold_links`
 canonicalizes question+answer pairs to a directed (question_id, answer_id), `all_gold_links`
-keeps the full undirected set. See plans/phase3-funsd-relations.md.
+keeps the full undirected set. See docs/phase3_brief.md.
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ form-runner is separate:
 - evaluate_pairs: micro P/R/F1 over many prebuilt (pred, gold) pairs (trivially unit-tested).
 - evaluate_forms: runs the predictor over forms for a scope, then delegates to evaluate_pairs.
 
-Scopes (see plans/phase3-funsd-relations.md):
+Scopes (see docs/phase3_brief.md):
 - "qa": predicted directed (question_id, answer_id) vs qa_gold_links (primary).
 - "all": the same QA predictions cast to undirected frozensets vs all_gold_links - a coverage
   diagnostic ("how many of ALL GT links does the QA-only heuristic recover"), not a second
