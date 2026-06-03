@@ -2,7 +2,7 @@
 
 A layout-aware pipeline for extracting structured tables from financial-report PDFs and
 answering questions over them, plus a standalone form relation-linking baseline. This report
-is the Phase 4 capstone: it states what was built, how it was evaluated, and what the results
+is the Phase 4 final report: it states what was built, how it was evaluated, and what the results
 mean. **All metric numbers are generated** by `scripts/build_phase4_summary.py` into
 `reports/phase4_metrics.md` and are never hand-copied into this prose;
 `notebooks/07_final_report.ipynb` renders that generated table inline beneath this report.
@@ -100,7 +100,7 @@ per-phase notebooks (`notebooks/01`-`05`) are the runners for steps 1-6.
 5. **Phase 2 layout.** `run_layout_batch.py` -> `eval_layout_iou.py --require-table-gt` (pos) and
    `--exclude-table-gt` (neg) -> `smoke_structure.py`.
 6. **Phase 3 relations.** `evaluate_funsd.py`.
-7. **Capstone summary.** `python scripts/build_phase4_summary.py` ->
+7. **Phase 4 summary.** `python scripts/build_phase4_summary.py` ->
    `reports/phase4_metrics.md` + `outputs/evaluation/phase4_summary.json` (this report reads the
    former).
-8. **Demo.** `python scripts/run_demo.py` (key-optional Gradio; PR-C).
+8. **Demo.** `python scripts/run_demo.py` (key-optional Gradio final demo).

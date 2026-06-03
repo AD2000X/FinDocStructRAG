@@ -58,6 +58,6 @@ pipeline); and Phase 3 FUNSD relation-linking baseline (annotation-only determin
 predictor, held-out `test_50.qa_links` F1 0.727).
 
 Current phase: Phase 4 (full demo + evaluation + report) is in progress on
-`feature/phase4-demo-eval-report` — a capstone that aggregates the per-phase metrics into
+`feature/phase4-demo` — a final integration phase that aggregates the per-phase metrics into
 one summary, a key-optional Gradio demo, and a written report. See [PLAN.md](PLAN.md) for
 the phase roadmap.

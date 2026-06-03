@@ -1,4 +1,4 @@
-"""Phase 4 capstone summary tests (CPU, synthetic) - Phase 4.
+"""Phase 4 summary tests (CPU, synthetic) - Phase 4.
 
 The summarizers take already-loaded metrics dicts (the per-phase evaluation JSONs) or parsed
 CSV rows (layout) and return normalized summary dicts; no file IO, no Drive, no gradio is

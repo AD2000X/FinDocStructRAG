@@ -181,6 +181,22 @@ Decisions outgrow this file, split them into `DECISIONS.md` (or `docs/adr/`).
 
 ---
 
+## 2026-06-03 - Phase 4 final demo readiness pass
+
+### Result - branch/docs/notebooks now point at the integrated final-demo branch
+
+- **What changed:** aligned Phase 4 references from the earlier split branches to the integrated
+  `feature/phase4-demo` branch, where PR-A/PR-B/PR-C are now present together.
+- **Demo fix:** `scripts/run_demo.py` launches Gradio with `allowed_paths` for
+  `outputs/layout/crops`, so Colab Drive-resident layout crop PNGs can be displayed in the
+  gallery without Gradio's `InvalidPathError`.
+- **Naming cleanup:** replaced inflated wrap-up wording with "final demo", "final integration", or
+  "Phase 4 summary" to keep the project description practical.
+- **Scope hygiene:** raw data and generated machine artifacts remain gitignored under `data/` and
+  `outputs/`; committed report artifacts stay under `reports/`.
+
+---
+
 ## 2026-06-03 - Phase 4 eval-summary backbone (PR-A)
 
 ### Result - one summary aggregated from the per-phase artifacts; report numbers never hand-copied
@@ -203,7 +219,8 @@ Decisions outgrow this file, split them into `DECISIONS.md` (or `docs/adr/`).
   relevant chunk per question, `src/eval_retrieval.py`); a missing artifact degrades to
   `{"available": false}` rather than failing.
 - **Result:** full `pytest` green (246, +10). Headline echoes: FUNSD `test_50.qa_links` F1 0.727;
-  QA `gt_markdown` answer_exact 0.675. PR-B (report) and PR-C (Gradio demo) follow.
+  QA `gt_markdown` answer_exact 0.675. PR-B (report) and PR-C (Gradio demo) later landed on the
+  integrated Phase 4 demo branch.
 
 ---
 
