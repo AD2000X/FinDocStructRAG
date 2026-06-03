@@ -542,26 +542,22 @@ Implementation details:
 
 ## 7. Next steps
 
-**Phases 0 through 2 are complete and merged** (v1 = table-only RAG; Phase 2 = DocLayNet
-layout-crop integration, merged to `main` 2026-06-03). The active branch is
-**Phase 3 (FUNSD relation branch)**, `feature/phase3-funsd-relations` off `main`.
+**Phases 0 through 3 are complete and merged** (v1 = table-only RAG; Phase 2 = DocLayNet
+layout-crop integration; Phase 3 = FUNSD relation baseline, both merged to `main`
+2026-06-03). **Phase 4 (full demo + evaluation + report) is the next phase.**
 
-Phase 3 V1 is implemented and scored (entirely local, CPU-only, no Colab):
+Phase 3 V1 delivered (annotation-only deterministic relation baseline; see
+`docs/phase3_brief.md`): `src/funsd_extraction.py` (parse + dedupe + per-answer-argmax
+predictor), `src/eval_funsd.py` (set-based P/R/F1), `scripts/evaluate_funsd.py`
+(+ `scripts/fetch_funsd.py`), `tests/test_funsd_relations.py` (17 synthetic tests),
+`notebooks/05_phase3_funsd_relations.ipynb` (runner). Headline (held-out `test_50.qa_links`):
+P 0.946 / R 0.590 / **F1 0.727**; full matrix in `DEVLOG.md` (2026-06-03) and
+`outputs/evaluation/phase3_funsd_relations.json`.
 
-1. Annotation-only deterministic relation baseline: `src/funsd_extraction.py` (parse + dedupe
-   + per-answer-argmax predictor), `src/eval_funsd.py` (set-based P/R/F1),
-   `scripts/evaluate_funsd.py` (+ `scripts/fetch_funsd.py`), `tests/test_funsd_relations.py`
-   (17 synthetic tests). Full suite 236 passed.
-2. Headline (held-out `test_50.qa_links`): P 0.946 / R 0.590 / **F1 0.727**; secondaries in
-   `DEVLOG.md` (2026-06-03) and `outputs/evaluation/phase3_funsd_relations.json`.
-
-Remaining:
-
-1. Open the Phase 3 PR.
-2. Optional (train-only): tune `HeuristicParams` on `train_149` if higher recall is wanted;
-   never on `test_50`. FUNSD token classification (V2 / seqeval) and threshold-based multi-link
-   matching are future work, not V1.
-3. Phase 4 (full demo + evaluation + report) is the next phase.
+Phase 3 follow-ups (optional, deferred to future work):
+- Train-only: tune `HeuristicParams` on `train_149` if higher recall is wanted; never on
+  `test_50`.
+- FUNSD token classification (V2 / seqeval) and threshold-based multi-link matching.
 
 ---
 
