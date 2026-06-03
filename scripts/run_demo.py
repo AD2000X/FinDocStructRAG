@@ -214,6 +214,14 @@ def layout_view(page_id: str):
 # --- FUNSD + Overview + Limitations ---
 
 
+def gradio_allowed_paths() -> list[str]:
+    """Artifact paths Gradio may serve when outputs live outside the repo, e.g. Colab Drive."""
+    paths = [
+        config.LAYOUT_OUTPUT / "crops",
+    ]
+    return [str(p.resolve()) for p in paths if p.exists()]
+
+
 def funsd_view() -> str:
     d = _load_json(config.EVALUATION / "phase3_funsd_relations.json")
     if d is None:
@@ -319,7 +327,7 @@ def main() -> None:
         with gr.Tab("Limitations"):
             gr.Markdown(LIMITATIONS_MD)
 
-    demo.launch(share=config.IN_COLAB)
+    demo.launch(share=config.IN_COLAB, allowed_paths=gradio_allowed_paths())
 
 
 if __name__ == "__main__":
