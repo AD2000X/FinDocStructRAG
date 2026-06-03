@@ -19,6 +19,7 @@ venv/
 .mcp.json
 tmp/
 memory/
+plans/
 
 # Scratch screenshots (never committed)
 output*.png

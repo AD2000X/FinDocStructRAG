@@ -181,6 +181,56 @@ Decisions outgrow this file, split them into `DECISIONS.md` (or `docs/adr/`).
 
 ---
 
+## 2026-06-03 - Phase 3 FUNSD relation-linking baseline (V1)
+
+### Result - annotation-only spatial heuristic; high precision, recall is the design ceiling
+
+First Phase 3 deliverable: a deterministic FUNSD relation-linking baseline over GT entities,
+CPU-only and annotation-only (the FUNSD JSON carries entity text/bbox/label and the GT
+`linking` pairs, so no image pixels are loaded). Run on the real dataset (149 train + 50 test
+= 199 forms), `scripts/evaluate_funsd.py`, untuned a-priori params:
+
+| split | scope | precision | recall | f1 | tp / pred / gold | n |
+| --- | --- | --- | --- | --- | --- | --- |
+| **test_50** | **qa_links** | **0.946** | **0.590** | **0.727** | 494 / 522 / 837 | 50 |
+| all_199 | qa_links | 0.925 | 0.535 | 0.678 | 2123 / 2295 / 3966 | 199 |
+| test_50 | all_links | 0.946 | 0.464 | 0.623 | 494 / 522 / 1064 | 50 |
+| all_199 | all_links | 0.925 | 0.401 | 0.560 | 2123 / 2295 / 5293 | 199 |
+| train_149 | qa_links | 0.919 | 0.521 | 0.665 | 1629 / 1773 / 3129 | 149 |
+
+Reading it honestly:
+- **Headline (held-out): `test_50.qa_links.micro_f1` = 0.727**, precision 0.946. The heuristic
+  fires conservatively and is right when it does; the limit is recall.
+- **Recall (0.590) is the design ceiling, not a bug.** Per-answer argmax emits at most one link
+  per answer, and the geometry only models same-row right-side and below relations - so answers
+  whose question sits left/above, or that have multiple gold questions, are under-covered. The
+  rejected alternatives (per-question argmax, global threshold) trade this for precision; richer
+  matching (threshold-based multi-link) is the documented next lever, deliberately out of V1.
+- **No tuning-on-test risk.** Params are a-priori defaults; `train_149` F1 (0.665) is *below*
+  `test_50` (0.727), so test is if anything the easier split - the gap is sampling, not fitting.
+- **`all_links` is a coverage diagnostic, not a second predictor.** Same QA predictions scored
+  (as undirected pairs) against every GT link; recall necessarily drops (0.464 test) because the
+  QA-only heuristic cannot cover header->question and other link types. `all_199` carries the
+  "contains the 50 test + 149 tuned forms, not held-out" caveat in the report JSON.
+
+Design (locked in discussion; see `plans/phase3-funsd-relations.md`):
+- **Predictor:** per-answer argmax + distance gate; distances normalized by the form's median
+  entity height; two separate knobs (`max_distance_units` distance gate, `min_score` floor).
+- **GT links:** deduped to undirected frozensets (FUNSD records links bidirectionally), then
+  `qa_gold_links` canonicalizes question+answer to directed `(q,a)`; `all_gold_links` keeps the
+  full undirected set.
+- **Reporting matrix:** primary `test_50.qa_links` (held-out); secondary `all_199.qa_links`,
+  `test_50/all_199.all_links`; `train_149` is the dev/tuning split.
+- **No sklearn in V1** (P/R/F1 is set arithmetic). **No image loading** (optional later for
+  qualitative overlay/debug only, never in the baseline or the gate).
+- **Scope held:** standalone branch; does not touch the RAG pipeline. FUNSD token classification
+  (V2 / seqeval) is future work.
+- **Files:** `src/funsd_extraction.py`, `src/eval_funsd.py`, `scripts/evaluate_funsd.py`,
+  `scripts/fetch_funsd.py`, `tests/test_funsd_relations.py` (17 synthetic tests, the gate),
+  `src/config.py` (FUNSD paths). Full suite 236 passed.
+
+---
+
 ## 2026-06-02 - Phase 2 DocLayNet layout-crop MVP gate
 
 ### Finding - Aryn primary carries forward; fallback is narrow; crop->structure needs band dedup
